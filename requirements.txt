@@ -1,0 +1,17 @@
+# Required dependencies
+numpy>=1.20.0
+
+# Optional dependencies for enhanced functionality
+
+# For Numba-accelerated backend (faster single-neuron simulations)
+numba>=0.55.0
+
+# For plotting results
+matplotlib>=3.3.0
+
+# For validation against reference implementations
+scipy>=1.7.0
+
+# For testing (if implementing tests)
+pytest>=6.0.0
+pytest-cov>=2.10.0
