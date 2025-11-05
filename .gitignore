@@ -148,6 +148,9 @@ cython_debug/
 *.jpeg
 *.svg
 
+# But keep the plots directory structure
+!plots/.gitkeep
+
 # Data files (if any)
 *.csv
 *.npy

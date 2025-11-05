@@ -350,7 +350,7 @@ These will be implemented in the `gpu_backend/` directory following the same API
 
 ## License
 
-This implementation follows the design document for educational and research purposes.
+[MIT](./LICENSE)
 
 ## References
 
