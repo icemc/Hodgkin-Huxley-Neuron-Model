@@ -47,19 +47,7 @@ project/
 ### Required Dependencies
 
 ```bash
-pip install numpy
-```
-
-### Optional Dependencies
-
-For enhanced performance with Numba backend:
-```bash
-pip install numba
-```
-
-For plotting results:
-```bash
-pip install matplotlib
+pip install -r requirements.txt
 ```
 
 ## Quick Start

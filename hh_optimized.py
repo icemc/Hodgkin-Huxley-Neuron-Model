@@ -202,10 +202,15 @@ class Simulator:
                 results = self.sim.run_single(V0, m0, h0, n0, stimulus, dt, T)
             else:
                 # Batch
+                n_steps = int(np.ceil(T / dt))
+                batch_sz = state0.data.shape[0]
+                
                 if stimulus is None:
-                    n_steps = int(np.ceil(T / dt))
-                    batch_sz = state0.data.shape[0]
                     stimulus = np.zeros((n_steps, batch_sz))
+                elif stimulus.ndim == 1:
+                    # Broadcast 1D stimulus to all neurons in batch
+                    stimulus = np.tile(stimulus[:n_steps].reshape(-1, 1), (1, batch_sz))
+                
                 results = self.sim.run_batch(state0.data, stimulus, dt, T)
         
         return SimulationResult(results, self.model.params, dt)
