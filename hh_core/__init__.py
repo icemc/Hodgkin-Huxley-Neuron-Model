@@ -20,8 +20,7 @@ from .integrators import (
     IntegratorBase,
     ForwardEuler,
     RK4,
-    RK4RushLarsen,
-    # simulate
+    RK4RushLarsen
 )
 
 from .utils import (
@@ -52,7 +51,6 @@ __all__ = [
     'ForwardEuler',
     'RK4',
     'RK4RushLarsen',
-    # 'simulate',
     
     # Utils
     'Stimulus',
