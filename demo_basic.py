@@ -183,7 +183,31 @@ def batch_simulation_demo():
     plt.savefig('plots/hh_simulation_batch.png', dpi=150, bbox_inches='tight')
     print("Plot saved as: hh_simulation_batch.png")
     print()
-    
+    # Plot 3D phase space n (x), m (y), h (z) for each neuron
+    print("Plotting 3D phase space (n vs m vs h) for each neuron...")
+    # local import to avoid modifying top-level imports for scripts that don't need 3D
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+    fig2 = plt.figure(figsize=(8, 6))
+    ax2 = fig2.add_subplot(111, projection='3d')
+
+    for i in range(batch_size):
+        # plot trajectory in 3D phase space: n (x), m (y), h (z)
+        ax2.plot(result.n[:, i], result.m[:, i], result.h[:, i], label=f'Neuron {i}', alpha=0.8)
+        # mark start and end points for clarity
+        ax2.scatter(result.n[0, i], result.m[0, i], result.h[0, i], marker='o', color='k', s=20)
+        ax2.scatter(result.n[-1, i], result.m[-1, i], result.h[-1, i], marker='x', color='k', s=20)
+
+    ax2.set_xlabel('n (activation variable)')
+    ax2.set_ylabel('m (activation variable)')
+    ax2.set_zlabel('h (inactivation variable)')
+    ax2.set_title('3D Phase Space: n (x) vs m (y) vs h (z)')
+    ax2.grid(True, alpha=0.3)
+    ax2.legend()
+
+    plt.savefig('plots/hh_simulation_phase_nmh.png', dpi=150, bbox_inches='tight')
+    print("Plot saved as: hh_simulation_phase_nmh.png")
+    print()
+
     print("Batch demo complete!")
 
 
