@@ -110,20 +110,3 @@ def test_different_integrators(integrator):
     simulator = Simulator(model=model, backend='cpu', integrator=integrator)
     result = simulator.run(T=50.0, dt=0.01, stimulus=stimulus)
     assert result.V is not None
-
-
-def test_numba_backend():
-    """Test Numba backend if available."""
-    from hh_optimized import HHModel, Simulator, Stimulus
-    
-    model = HHModel()
-    try:
-        simulator = Simulator(model=model, backend='numba', integrator='rk4')
-        stimulus = Stimulus.step(10.0, 10.0, 40.0, 50.0, 0.01)
-        result = simulator.run(T=50.0, dt=0.01, stimulus=stimulus)
-        assert result.V is not None
-    except ValueError as ve:
-        if "not available" in str(ve):
-            pytest.skip("Numba backend not available")
-        else:
-            raise

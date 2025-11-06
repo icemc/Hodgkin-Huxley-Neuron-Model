@@ -2,7 +2,7 @@
 High-level API for Hodgkin-Huxley simulations.
 
 This module provides user-friendly classes for running HH simulations
-with different backends (CPU vectorized, CPU Numba-accelerated).
+with CPU-optimized vectorized backend.
 """
 
 import numpy as np
@@ -12,12 +12,6 @@ import warnings
 from hh_core.models import HHParameters, HHState
 from hh_core.utils import Stimulus as StimGen
 from cpu_backed.vectorized import VectorizedSimulator
-try:
-    from cpu_backed.numba_kernels import NumbaSimulator
-    NUMBA_AVAILABLE = True
-except ImportError:
-    NUMBA_AVAILABLE = False
-    warnings.warn("Numba not available. Install numba for accelerated single-neuron simulations.")
 
 
 class HHModel:
@@ -109,9 +103,7 @@ class Simulator:
     """
     Main simulator class for HH neurons.
     
-    Supports multiple backends:
-    - 'cpu': Vectorized NumPy implementation (best for large batches)
-    - 'numba': Numba-accelerated implementation (best for single neurons)
+    Uses vectorized NumPy implementation optimized for batch simulations.
     """
     
     def __init__(self, 
@@ -124,7 +116,7 @@ class Simulator:
         
         Args:
             model: HH model (creates default if None)
-            backend: 'cpu' or 'numba'
+            backend: 'cpu' (only supported backend)
             integrator: 'euler', 'rk4', or 'rk4rl' (RK4 with Rush-Larsen)
             dtype: Data type for arrays (np.float32 or np.float64)
         """
@@ -138,16 +130,8 @@ class Simulator:
             self.sim = VectorizedSimulator(
                 self.model.params, integrator, dtype
             )
-        elif backend == 'numba':
-            if not NUMBA_AVAILABLE:
-                raise ValueError("Numba backend not available. Install numba or use 'cpu' backend.")
-            params = self.model.params
-            self.sim = NumbaSimulator(
-                params.C_m, params.g_Na, params.g_K, params.g_L,
-                params.E_Na, params.E_K, params.E_L
-            )
         else:
-            raise ValueError(f"Unknown backend: {backend}. Use 'cpu' or 'numba'.")
+            raise ValueError(f"Unknown backend: {backend}. Only 'cpu' backend is supported.")
     
     def run(self,
             T: float,
@@ -192,26 +176,6 @@ class Simulator:
                 batch_size=batch_size, record_vars=record,
                 spike_threshold=spike_threshold
             )
-        elif self.backend == 'numba':
-            # Numba backend has different interface
-            if state0.data.ndim == 1:
-                # Single neuron
-                V0, m0, h0, n0 = state0.data
-                if stimulus is None:
-                    stimulus = np.zeros(int(np.ceil(T / dt)))
-                results = self.sim.run_single(V0, m0, h0, n0, stimulus, dt, T)
-            else:
-                # Batch
-                n_steps = int(np.ceil(T / dt))
-                batch_sz = state0.data.shape[0]
-                
-                if stimulus is None:
-                    stimulus = np.zeros((n_steps, batch_sz))
-                elif stimulus.ndim == 1:
-                    # Broadcast 1D stimulus to all neurons in batch
-                    stimulus = np.tile(stimulus[:n_steps].reshape(-1, 1), (1, batch_sz))
-                
-                results = self.sim.run_batch(state0.data, stimulus, dt, T)
         
         return SimulationResult(results, self.model.params, dt)
 

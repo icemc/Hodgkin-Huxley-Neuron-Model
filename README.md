@@ -5,8 +5,7 @@ This is the CPU-optimized implementation of the Hodgkin-Huxley neuron model in P
 ## Overview
 
 This implementation provides:
-- **High-performance vectorized NumPy** implementation for large batch simulations
-- **Numba-accelerated kernels** for single neuron or small batch simulations
+- **High-performance vectorized NumPy** implementation for batch simulations
 - **Multiple integration methods**: Forward Euler, RK4, and RK4 with Rush-Larsen
 - **Flexible stimulus generation**: step, pulse train, ramp, noisy currents
 - **Spike detection** with interpolation for precise timing
@@ -24,8 +23,7 @@ project/
 │   └── utils.py               # Stimulus generation, spike detection
 ├── cpu_backed/                # CPU-optimized implementations
 │   ├── __init__.py
-│   ├── vectorized.py          # NumPy vectorized simulator
-│   └── numba_kernels.py       # Numba-jitted kernels
+│   └── vectorized.py          # NumPy vectorized simulator
 ├── test/                      # Pytest test suite
 │   ├── __init__.py
 │   ├── conftest.py            # Pytest fixtures and configuration
@@ -105,14 +103,6 @@ result = simulator.run(
 print(result.V.shape)
 ```
 
-### Using Numba Backend (Faster for Single Neurons)
-
-```python
-# Requires: pip install numba
-simulator = Simulator(model=model, backend='numba', integrator='rk4')
-result = simulator.run(T=100.0, dt=0.01, stimulus=stimulus)
-```
-
 ## Features
 
 ### Model Parameters
@@ -190,21 +180,17 @@ spike_times = result.get_spike_times()
 
 ## Performance Tips
 
-1. **Use appropriate backend:**
-   - `backend='cpu'` for batch simulations (many neurons)
-   - `backend='numba'` for single neurons or small batches
-
-2. **Choose proper dt:**
+1. **Choose proper dt:**
    - Standard: `dt=0.01` ms
    - Minimum recommended: `dt=0.005` ms
    - Maximum safe: `dt=0.05` ms (with RK4)
 
-3. **Record only needed variables:**
+2. **Record only needed variables:**
    ```python
    result = simulator.run(..., record=['V'])  # Only voltage
    ```
 
-4. **Use float32 for memory savings:**
+3. **Use float32 for memory savings:**
    ```python
    simulator = Simulator(..., dtype=np.float32)
    ```
@@ -237,7 +223,7 @@ state = model.resting_state(batch_size=1)  # Get resting state
 ```python
 simulator = Simulator(
     model=None,           # HHModel (default if None)
-    backend='cpu',        # 'cpu' or 'numba'
+    backend='cpu',        # Only 'cpu' backend supported
     integrator='rk4',     # 'euler', 'rk4', or 'rk4rl'
     dtype=np.float64      # np.float32 or np.float64
 )
