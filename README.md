@@ -203,9 +203,10 @@ Run the included demo:
 python demo_basic.py
 ```
 
-This will generate two plots:
+This will generate three plots:
 - `hh_simulation_basic.png` - Single neuron simulation
 - `hh_simulation_batch.png` - Batch simulation with 5 neurons
+- `hh_simulation_phase_nmh.png` - 3D phase space (n vs m vs h) for each neuron
 
 ## API Reference
 
