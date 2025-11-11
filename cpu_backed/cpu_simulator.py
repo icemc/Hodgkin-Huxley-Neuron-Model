@@ -32,7 +32,7 @@ class Simulator:
         Args:
             model: HH model (creates default if None)
             backend: 'cpu' (only supported backend)
-            integrator: 'euler', 'rk4', or 'rk4rl' (RK4 with Rush-Larsen)
+            integrator: 'euler', 'rk4', 'rk4rl' (RK4 with Rush-Larsen), or 'rk4-scipy'
             dtype: Data type for arrays (np.float32 or np.float64)
         """
         self.model = model if model is not None else HHModel()

@@ -127,9 +127,13 @@ class TestBasicFunctionality:
         spike_counts = result.get_spike_count()
         assert len(spike_counts) == batch_size
     
-    @pytest.mark.parametrize("integrator", ['euler', 'rk4', 'rk4rl'])
+    @pytest.mark.parametrize("integrator", ['euler', 'rk4', 'rk4rl', 'rk4-scipy'])
     def test_different_integrators(self, integrator):
         """Test different integrator types."""
+        # Skip scipy test if scipy is not available
+        if integrator == 'rk4-scipy' and not SCIPY_AVAILABLE:
+            pytest.skip("scipy not available")
+        
         model = HHModel()
         stimulus = Stimulus.step(10.0, 10.0, 40.0, 50.0, 0.01)
         
@@ -138,6 +142,37 @@ class TestBasicFunctionality:
         
         assert result.V is not None
         assert len(result.V) > 0
+    
+    @pytest.mark.skipif(not SCIPY_AVAILABLE, reason="scipy not available")
+    def test_rk4_vs_scipy_integrator(self):
+        """Compare hand-written RK4 with scipy's RK45 integrator."""
+        model = HHModel()
+        stimulus = Stimulus.step(10.0, 10.0, 40.0, 50.0, 0.01)
+        
+        # Run with hand-written RK4
+        sim_rk4 = Simulator(model=model, backend='cpu', integrator='rk4')
+        result_rk4 = sim_rk4.run(T=50.0, dt=0.01, stimulus=stimulus)
+        
+        # Run with scipy RK45
+        sim_scipy = Simulator(model=model, backend='cpu', integrator='rk4-scipy')
+        result_scipy = sim_scipy.run(T=50.0, dt=0.01, stimulus=stimulus)
+        
+        # Both should produce similar results (within reasonable tolerance)
+        V_rk4 = get_neuron_data(result_rk4.V)
+        V_scipy = get_neuron_data(result_scipy.V)
+        
+        max_diff = np.max(np.abs(V_rk4 - V_scipy))
+        
+        # Should be very close (< 0.5 mV difference)
+        assert max_diff < 0.5, f"RK4 vs Scipy difference {max_diff:.4f} mV exceeds threshold"
+        
+        # Check spike counts match
+        spike_count_rk4 = result_rk4.get_spike_count()
+        spike_count_scipy = result_scipy.get_spike_count()
+        assert spike_count_rk4 == spike_count_scipy, \
+            f"Spike counts differ between RK4 ({spike_count_rk4}) and Scipy ({spike_count_scipy})"
+        
+        print(f"✓ RK4 vs RK4-Scipy: Max voltage difference = {max_diff:.6f} mV")
 
 
 # ============================================================================

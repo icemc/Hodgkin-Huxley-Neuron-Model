@@ -6,7 +6,7 @@ using NumPy for efficient batch processing on CPUs.
 """
 
 import numpy as np
-from typing import Optional, Dict, List
+from typing import Optional, Tuple, Dict, List
 import sys
 import os
 
@@ -17,7 +17,7 @@ from hh_core.models import (
     HHState, HHParameters, derivatives, 
     compute_currents, rush_larsen_gating_step
 )
-from hh_core.integrators import IntegratorBase, RK4, RK4RushLarsen, ForwardEuler
+from hh_core.integrators import IntegratorBase, RK4, RK4RushLarsen, ForwardEuler, RK45Scipy
 from hh_core.utils import detect_spikes, interpolate_spike_times
 
 
@@ -36,7 +36,7 @@ class VectorizedSimulator:
         
         Args:
             params: Model parameters (uses defaults if None)
-            integrator_type: 'euler', 'rk4', or 'rk4rl' (RK4 with Rush-Larsen)
+            integrator_type: 'euler', 'rk4', 'rk4rl' (RK4 with Rush-Larsen), or 'rk4-scipy'
             dtype: Data type for arrays (float32 or float64)
         """
         self.params = params if params is not None else HHParameters()
@@ -50,6 +50,8 @@ class VectorizedSimulator:
             self.integrator = RK4(self.params)
         elif integrator_type == 'rk4rl':
             self.integrator = RK4RushLarsen(self.params)
+        elif integrator_type == 'rk4-scipy':
+            self.integrator = RK45Scipy(self.params)
         else:
             raise ValueError(f"Unknown integrator type: {integrator_type}")
     
