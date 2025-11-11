@@ -5,9 +5,10 @@ High-performance CPU and GPU implementations of the Hodgkin-Huxley neuron model 
 ## Overview
 
 This implementation provides:
-- **GPU acceleration**: Custom CUDA kernels with 3-45x speedup for batch simulations
+- **GPU acceleration**: Custom CUDA kernels with up to 22.64x speedup for batch simulations ([see benchmarks](#benchmarks))
 - **High-performance vectorized NumPy** for CPU batch simulations
 - **Multiple integration methods**: Forward Euler, RK4, RK4 with Rush-Larsen, and RK4-Scipy
+- **Optimized hand-written RK4**: 2.48x faster than SciPy's RK45 ([see benchmarks](#rk4-vs-scipy-integrator-performance))
 - **Flexible stimulus generation**: step, pulse train, ramp, noisy currents
 - **Spike detection** with interpolation for precise timing
 - **Clean, modular API** for easy use
@@ -144,27 +145,15 @@ Each thread runs: RK4(neuron_id) for all time steps
 
 ### Performance Comparison
 
-Benchmark results (50ms simulation, dt=0.01ms, 5000 steps, 5 runs per test, RTX 3070 Ti Laptop GPU):
+Our GPU implementation achieves up to **22.64x speedup** for large batch simulations compared to vectorized CPU code. See detailed benchmark results in the [Benchmarks](#benchmarks) section.
 
-| Batch Size | CPU Time | GPU Time | Speedup |
-|-----------|----------|----------|---------|
-| 1 neuron | 0.76s | 0.32s | **2.36x** |
-| 10 neurons | 1.33s | 0.26s | **5.04x** |
-| 50 neurons | 1.35s | 0.26s | **5.29x** |
-| 100 neurons | 1.51s | 0.22s | **6.94x** |
-| 500 neurons | 2.30s | 0.22s | **10.56x** |
-| 1,000 neurons | 3.59s | 0.27s | **13.12x** |
-| 5,000 neurons | 12.28s | 0.68s | **18.03x** |
-| 10,000 neurons | 26.11s | 1.15s | **22.64x** |
+**Quick Summary:**
+- GPU wins for **all batch sizes** (even single neuron: 2.36x faster)
+- Speedup scales with batch size (1 neuron: 2.36x → 10,000 neurons: 22.64x)
+- GPU time stays nearly constant while CPU time scales linearly
+- Optimal for large-scale network simulations (1,000+ neurons)
 
-**Key observation:** GPU time stays relatively constant (~0.2-0.3s) for small to medium batch sizes, while CPU time scales linearly. Maximum speedup of **22.64x** achieved at 10,000 neurons.
-
-**Performance Insights:**
-1. **GPU wins even for single neuron** (2.36x speedup) due to custom kernel efficiency
-2. **Speedup scales with batch size** - GPU overhead is amortized across more neurons
-3. **GPU time nearly constant** - Computational cost distributed across parallel threads
-4. **CPU time scales linearly** - Each neuron adds sequential work
-5. **No crossover point** - GPU beneficial for all batch sizes tested
+For complete performance data and methodology, see [CPU vs GPU Benchmark](#cpu-vs-gpu-performance).
 
 ### Advantages & Limitations
 
@@ -218,10 +207,10 @@ GPU simulation requires:
 
 If CuPy is not installed, the simulator automatically falls back to CPU.
 
-### Examples and Benchmarks
-
-- **Demo:** `python demo_gpu.py` - GPU batch simulation with plotting
-- **Benchmark:** `python benchmark_cpu_vs_gpu.py` - Comprehensive CPU vs GPU comparison
+**See Also:**
+- [GPU Usage Example](#gpu-example) - Demo script with visualization
+- [CPU vs GPU Benchmark](#cpu-vs-gpu-performance) - Comprehensive performance comparison
+- [GPU vs CPU Comparison Table](#cpu-vs-gpu-comparison) - Feature comparison
 
 ### CPU vs GPU Comparison
 
@@ -267,7 +256,8 @@ model.set_params(g_Na=100.0, E_K=-80.0)
    - Fourth-order Runge-Kutta (hand-written)
    - Excellent accuracy/performance tradeoff
    - Standard choice for HH simulations
-   - ~2.5x faster than scipy's implementation
+   - **2.48x faster than SciPy's RK45** (see [Integrator Benchmark](#rk4-vs-scipy-integrator-performance))
+
 
 3. **RK4 with Rush-Larsen** (`integrator='rk4rl'`)
    - RK4 for voltage, Rush-Larsen for gating variables
@@ -470,6 +460,76 @@ python demo_gpu.py
 This will generate two plots:
 - `gpu_single_neuron_demo.png` - Single neuron simulation
 - `gpu_batch_simulation_demo.png` - Batch simulation with 5 neurons
+
+## Benchmarks
+
+This section contains comprehensive performance benchmarks comparing different implementations and integrators.
+
+### CPU vs GPU Performance
+
+**Benchmark comparing vectorized CPU (NumPy) vs GPU (CUDA) implementations across different batch sizes.**
+
+Test configuration: 50ms simulation, dt=0.01ms, 5000 steps, 5 runs per test, RTX 3070 Ti Laptop GPU
+
+| Batch Size | CPU Time | GPU Time | Speedup |
+|-----------|----------|----------|---------|
+| 1 neuron | 0.76s | 0.32s | **2.36x** |
+| 10 neurons | 1.33s | 0.26s | **5.04x** |
+| 50 neurons | 1.35s | 0.26s | **5.29x** |
+| 100 neurons | 1.51s | 0.22s | **6.94x** |
+| 500 neurons | 2.30s | 0.22s | **10.56x** |
+| 1,000 neurons | 3.59s | 0.27s | **13.12x** |
+| 5,000 neurons | 12.28s | 0.68s | **18.03x** |
+| 10,000 neurons | 26.11s | 1.15s | **22.64x** |
+
+**Key Findings:**
+- GPU achieves up to **22.64x speedup** at 10,000 neurons
+- GPU time stays relatively constant (~0.2-0.3s) for small-medium batches
+- CPU time scales linearly with batch size
+- GPU beneficial for all batch sizes (no crossover point)
+
+**Run the benchmark:**
+```bash
+python benchmark_cpu_vs_gpu.py
+```
+
+Generated plot: `plots/cpu_vs_gpu_benchmark.png`
+
+### RK4 vs SciPy Integrator Performance
+
+**Benchmark comparing hand-written RK4 vs SciPy's RK45 integrator.**
+
+Test configuration: 50ms simulation, dt=0.01ms, 5000 steps, 5 runs per test
+
+| Batch Size | RK4 (Hand-written) | RK4-Scipy | Speedup |
+|-----------|-------------------|-----------|---------|
+| 1 neuron | 0.92s | 2.15s | **2.33x** |
+| 10 neurons | 1.61s | 3.47s | **2.15x** |
+| 50 neurons | 1.67s | 3.61s | **2.16x** |
+| 100 neurons | 1.83s | 3.90s | **2.14x** |
+| 500 neurons | 2.79s | 6.15s | **2.20x** |
+| 1,000 neurons | 4.18s | 9.51s | **2.27x** |
+| 5,000 neurons | 15.38s | 43.10s | **2.80x** |
+| 10,000 neurons | 28.61s | 69.28s | **2.42x** |
+
+**Overall: Hand-written RK4 is 2.48x faster** (57.0s vs 141.2s total)
+
+**Why is Hand-Written RK4 Faster?**
+
+1. **Specialized for Fixed Step Size** - No adaptive stepping overhead
+2. **Vectorized NumPy Operations** - Efficient BLAS/LAPACK usage
+3. **Reduced Function Call Overhead** - Direct inline computations
+4. **Memory Layout Optimization** - Cache-friendly access patterns
+5. **HH-Specific Optimizations** - Tailored for Hodgkin-Huxley equations
+
+**Key Insight:** A specialized implementation optimized for fixed-step HH simulations outperforms general-purpose adaptive ODE solvers. SciPy's RK45 excels at general ODEs with unknown behavior, but our hand-written RK4 is tailored specifically for HH dynamics.
+
+**Run the benchmark:**
+```bash
+python benchmark_integrators.py
+```
+
+Generated plot: `plots/integrator_benchmark.png`
 
 ## Testing & Validation
 
