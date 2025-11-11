@@ -183,6 +183,7 @@ def batch_simulation_demo():
     plt.savefig('plots/hh_simulation_batch.png', dpi=150, bbox_inches='tight')
     print("Plot saved as: hh_simulation_batch.png")
     print()
+ 
     # Plot 3D phase space n (x), m (y), h (z) for each neuron
     print("Plotting 3D phase space (n vs m vs h) for each neuron...")
     # local import to avoid modifying top-level imports for scripts that don't need 3D
