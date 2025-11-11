@@ -5,6 +5,7 @@ This script demonstrates how to use the CPU-backed HH implementation
 to simulate a single neuron with step current injection.
 """
 
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -97,16 +98,22 @@ def basic_demo():
     
     # Plot results
     print("Generating plots...")
+    # ensure plots dir
+    os.makedirs('plots', exist_ok=True)
+
     fig, axes = result.plot(variables=['V', 'm', 'h', 'n'], figsize=(12, 10))
-    
+
     # Add stimulus to voltage plot (pad stimulus to match time array length)
-    stimulus_padded = np.pad(stimulus, (0, 1), mode='edge')
+    n_time = len(result.time)
+    pad_len = max(0, n_time - len(stimulus))
+    stimulus_padded = np.pad(stimulus, (0, pad_len), mode='edge')
     axes[0].plot(result.time, stimulus_padded * 5 - 80, 'r--', alpha=0.5, label='Stimulus (scaled)')
     axes[0].legend()
     axes[0].set_title('Membrane Potential and Gating Variables')
 
-    plt.savefig('plots/hh_simulation_basic.png', dpi=150, bbox_inches='tight')
-    print("Plot saved as: hh_simulation_basic.png")
+    out_png = 'plots/hh_simulation_basic.png'
+    plt.savefig(out_png, dpi=150, bbox_inches='tight')
+    print(f"Plot saved as: {out_png}")
     print()
     
     # Show voltage trace details

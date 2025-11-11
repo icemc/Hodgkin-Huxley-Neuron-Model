@@ -10,33 +10,27 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from hh_manual import HHManual
-
-
-def step(amplitude, t_start, t_end, duration, dt):
-    # helper local wrapper to produce stimulus array
-    n_steps = int(np.ceil(duration / dt))
-    arr = np.zeros(n_steps)
-    start = int(np.round(t_start / dt))
-    end = int(np.round(t_end / dt))
-    start = max(0, start)
-    end = min(n_steps - 1, end)
-    arr[start:end + 1] = amplitude
-    return arr
+from hh_optimized import Stimulus
 
 
 def run_sim(method, repeats, T, dt):
-    sim = HHManual()
-    stim = step(10.0, 10.0, 40.0, T, dt)
+    # validate method
+    if method not in ('rk4', 'euler'):
+        raise ValueError("method must be 'rk4' or 'euler' for run_sim")
 
-    # Warm-up
+    sim = HHManual()
+    stim = np.asarray(Stimulus.step(10.0, 10.0, 40.0, T, dt), dtype=float)
+
+    # Warm-up (single run to prime caches / any internal state)
     sim.run(T=T, dt=dt, stimulus=stim, method=method)
 
     t0 = time.perf_counter()
-    for _ in range(repeats):
+    out = None
+    for _ in range(max(1, int(repeats))):
         out = sim.run(T=T, dt=dt, stimulus=stim, method=method)
     t1 = time.perf_counter()
 
-    elapsed = (t1 - t0) / repeats
+    elapsed = (t1 - t0) / max(1, int(repeats))
     return out, elapsed, stim
 
 

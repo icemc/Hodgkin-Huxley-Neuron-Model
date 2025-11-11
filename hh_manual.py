@@ -134,6 +134,14 @@ class HHManual:
         stimulus: array-like or callable(t)
         method: 'rk4' or 'euler'
         """
+        # validate inputs
+        if T <= 0:
+            raise ValueError('T must be positive')
+        if dt <= 0:
+            raise ValueError('dt must be positive')
+        if method not in ('rk4', 'euler'):
+            raise ValueError("method must be 'rk4' or 'euler'")
+
         n_steps = int(np.ceil(T / dt))
         time = np.linspace(0.0, T, n_steps + 1)
 
@@ -153,13 +161,23 @@ class HHManual:
 
         # prepare stimulus array
         if callable(stimulus):
-            I_arr = np.array([float(stimulus(t)) for t in time[:-1]])
+            I_arr = np.array([float(stimulus(t)) for t in time[:-1]], dtype=float)
         else:
-            s = np.asarray(stimulus)
+            s = np.asarray(stimulus, dtype=float)
             if s.ndim == 1:
-                I_arr = s[:n_steps]
+                # truncate or pad to n_steps
+                if len(s) < n_steps:
+                    I_arr = np.pad(s, (0, n_steps - len(s)), mode='edge')
+                else:
+                    I_arr = s[:n_steps]
             else:
-                I_arr = s[:, 0] if s.shape[1] >= 1 else s[:, 0]
+                # assume shape (n_steps, batch) or (n_steps,)
+                if s.shape[0] < n_steps:
+                    # pad rows
+                    pad_rows = n_steps - s.shape[0]
+                    I_arr = np.pad(s, ((0, pad_rows), (0, 0)), mode='edge')[:, 0]
+                else:
+                    I_arr = s[:n_steps, 0]
 
         for i in range(n_steps):
             I_ext = float(I_arr[i]) if i < len(I_arr) else 0.0
