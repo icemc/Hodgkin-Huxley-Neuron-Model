@@ -167,8 +167,9 @@ def plot_results(batch_sizes, cpu_results, gpu_results, T, dt):
     ax.set_title(f'CPU vs GPU Performance\n({T}ms simulation, dt={dt}ms)', 
                 fontsize=14, fontweight='bold')
     ax.set_xscale('log')
-    ax.set_yscale('log')
-    ax.grid(True, alpha=0.3, which='both', linestyle='--')
+    # Use linear scale for y-axis to show actual time values
+    ax.set_yscale('linear')
+    ax.grid(True, alpha=0.3, linestyle='--')
     ax.legend(fontsize=11, loc='upper left')
     
     if gpu_times:

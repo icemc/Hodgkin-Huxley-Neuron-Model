@@ -160,16 +160,25 @@ class GPUSimulator(BaseSimulator):
         
         Args:
             model: HH model (creates default if None)
-            integrator: Only 'rk4' is supported for GPU (ignored)
+            integrator: Integration method ('rk4' is the only supported method)
             dtype: 'float32' or 'float64' (float32 recommended for GPU)
         
         Raises:
             RuntimeError: If CuPy is not available
+            ValueError: If an unsupported integrator is specified
         """
         if not CUPY_AVAILABLE:
             raise RuntimeError(
                 "CuPy is not available. Please install cupy to use GPU acceleration.\n"
                 "Install with: pip install cupy-cuda11x  (or cuda12x for CUDA 12)"
+            )
+        
+        # Validate integrator
+        if integrator != 'rk4':
+            raise ValueError(
+                f"GPU simulator only supports 'rk4' integrator, got '{integrator}'. "
+                f"Supported integrators for GPU: ['rk4']. "
+                f"For other integrators, please use CPUSimulator."
             )
         
         # Initialize base class (will create model if None)

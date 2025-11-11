@@ -57,7 +57,7 @@ pip install -r requirements.txt
 
 ```python
 import numpy as np
-from hh_optimized import HHModel, Simulator, Stimulus
+from simulator import HHModel, Simulator, Stimulus
 
 # Create model with default parameters
 model = HHModel()
@@ -71,7 +71,7 @@ stimulus = Stimulus.step(
     t_start=10.0,     # ms
     t_end=40.0,       # ms
     duration=100.0,   # ms
-    dt=0.01          # ms
+    dt=0.01           # ms
 )
 
 # Run simulation
@@ -108,7 +108,7 @@ print(result.V.shape)
 
 ## GPU Acceleration
 
-This project includes a **GPU-accelerated implementation** using custom CUDA kernels via CuPy. The GPU simulator provides **3-45x speedup** depending on batch size.
+This project includes a **GPU-accelerated implementation** using custom CUDA kernels via CuPy. The GPU simulator provides up to **22x speedup** depending on batch size.
 
 ### Why GPU?
 
@@ -116,6 +116,31 @@ While Hodgkin-Huxley equations are **sequential in time** (each step depends on 
 
 - **CPU:** Simulates neurons sequentially (even with vectorization)
 - **GPU:** Each CUDA thread independently simulates one neuron
+
+### Architecture & Implementation
+
+**Custom CUDA Kernel Approach:**
+
+The implementation uses a custom CUDA kernel that:
+1. **Mirrors CPU RK4 logic exactly** - Same alpha/beta functions, same derivative calculations
+2. **Thread parallelism** - Each thread (neuron) is independent
+3. **SIMD execution** - All threads execute the same instructions on different data
+4. **Efficient memory layout** - Structure-of-Arrays for coalesced memory access
+
+```
+Grid: [num_blocks]
+  ├─ Block 0: [256 threads] → Neurons 0-255
+  ├─ Block 1: [256 threads] → Neurons 256-511
+  └─ Block N: [remaining threads] → Remaining neurons
+
+Each thread runs: RK4(neuron_id) for all time steps
+```
+
+**Key Design Decisions:**
+- **Code Reuse:** CUDA kernel implements the exact same HH equations and RK4 integration as CPU
+- **Memory Efficiency:** Structure-of-Arrays layout (`[V1, V2, V3, ...]`) for coalesced access
+- **Minimal Transfers:** Stimulus transferred once; all state stays on GPU; results transferred at end
+- **Float32 Precision:** Uses single precision (sufficient for HH dynamics, faster on GPU)
 
 ### Performance Comparison
 
@@ -130,18 +155,41 @@ Benchmark results (50ms simulation, dt=0.01ms, 5000 steps, 5 runs per test, RTX 
 | 500 neurons | 2.30s | 0.22s | **10.56x** |
 | 1,000 neurons | 3.59s | 0.27s | **13.12x** |
 | 5,000 neurons | 12.28s | 0.68s | **18.03x** |
-| 10,000 neurons | 23.30s | 1.26s | **18.44x** |
+| 10,000 neurons | 26.11s | 1.15s | **22.64x** |
 
-**Key observation:** GPU time stays relatively constant (~0.2-0.3s) for small to medium batch sizes, while CPU time scales linearly. Maximum speedup of **18.44x** achieved at 10,000 neurons.
+**Key observation:** GPU time stays relatively constant (~0.2-0.3s) for small to medium batch sizes, while CPU time scales linearly. Maximum speedup of **22.64x** achieved at 10,000 neurons.
+
+**Performance Insights:**
+1. **GPU wins even for single neuron** (2.36x speedup) due to custom kernel efficiency
+2. **Speedup scales with batch size** - GPU overhead is amortized across more neurons
+3. **GPU time nearly constant** - Computational cost distributed across parallel threads
+4. **CPU time scales linearly** - Each neuron adds sequential work
+5. **No crossover point** - GPU beneficial for all batch sizes tested
+
+### Advantages & Limitations
+
+**Advantages:**
+- **Exact same mathematics** as CPU implementation
+- **Massive parallelism** - simulate 10,000+ neurons simultaneously
+- **Scales efficiently** - GPU time nearly constant with batch size
+- **Clean API** - Same interface as CPU simulator
+- **Beneficial for all batch sizes** - even single neuron sees speedup
+
+**Limitations:**
+- **Float32 only** - Currently uses single precision (sufficient for HH)
+- **Requires CUDA GPU** - NVIDIA GPU with CUDA support needed
+- **CuPy dependency** - Must install `cupy-cuda11x` or `cupy-cuda12x`
+- **RK4 integrator only** - Only RK4 integration method supported on GPU
+- **Sequential in time** - Still advances through time steps one by one
 
 ### GPU Usage Example
 
 ```python
-from gpu_backed import GPUSimulator
+from simulator import Simulator
 from hh_core import Stimulus
 
 # Create GPU simulator (automatically uses float32)
-simulator = GPUSimulator()
+simulator = Simulator(backend='gpu', dtype=np.float32)
 
 # Create stimulus
 stim = Stimulus.constant(amplitude=10.0, duration=100.0, dt=0.01)
@@ -168,13 +216,26 @@ GPU simulation requires:
 - **NVIDIA GPU** with CUDA support
 - **CuPy** (`pip install cupy-cuda12x` or appropriate version)
 
-If CuPy is not installed, the simulator falls back to CPU automatically.
+If CuPy is not installed, the simulator automatically falls back to CPU.
 
 ### Examples and Benchmarks
 
 - **Demo:** `python demo_gpu.py` - GPU batch simulation with plotting
 - **Benchmark:** `python benchmark_cpu_vs_gpu.py` - Comprehensive CPU vs GPU comparison
-- **Details:** See `gpu_backed/README.md` for CUDA kernel implementation details
+
+### CPU vs GPU Comparison
+
+| Aspect | CPU (NumPy) | GPU (CUDA Kernel) |
+|--------|-------------|-------------------|
+| **Parallelism** | Vectorization (SIMD) | Thread parallelism (SIMT) |
+| **Max Neurons** | ~1000 practical | 10,000+ efficient |
+| **Overhead** | Low | Moderate (kernel launch) |
+| **Memory** | System RAM | GPU VRAM (8-24 GB) |
+| **Precision** | float32/float64 | float32 |
+| **Integrators** | euler, rk4, rk4rl, rk4-scipy | rk4 only |
+| **Best For** | Small-medium batches | Large batches |
+
+**Key Insight:** The GPU parallelizes across neurons (spatial), not time (temporal).
 
 ## Features
 
@@ -222,7 +283,7 @@ model.set_params(g_Na=100.0, E_K=-80.0)
 ### Stimulus Types
 
 ```python
-from hh_optimized import Stimulus
+from simulator import Stimulus
 
 # Constant current
 stim = Stimulus.constant(amplitude=10.0, duration=100.0, dt=0.01)
@@ -258,6 +319,116 @@ count = result.get_spike_count()
 spike_times = result.get_spike_times()
 ```
 
+## API Reference
+
+### HHModel
+
+```python
+model = HHModel(params=None)  # Create with optional custom parameters
+model.set_params(g_Na=100.0)  # Update parameters
+params = model.get_params()    # Get HHParameters object
+state = model.resting_state(batch_size=1)  # Get resting state
+```
+
+### Unified Simulator (Factory Function)
+
+```python
+from simulator import Simulator
+
+# CPU backend
+simulator = Simulator(
+    model=None,           # HHModel (default if None)
+    backend='cpu',        # 'cpu' or 'gpu'
+    integrator='rk4',     # 'euler', 'rk4', 'rk4rl', 'rk4-scipy'
+    dtype=np.float64      # np.float32 or np.float64
+)
+
+# GPU backend
+simulator = Simulator(
+    model=None,           # HHModel (default if None)
+    backend='gpu',        # GPU requires CuPy
+    integrator='rk4',     # Only 'rk4' supported on GPU
+    dtype='float32'       # GPU uses float32
+)
+
+result = simulator.run(
+    T,                    # Total time (ms)
+    dt=0.01,             # Time step (ms)
+    state0=None,         # Initial state (resting if None)
+    stimulus=None,       # Current array
+    batch_size=1,        # Number of neurons
+    record=['V','m','h','n'],  # Variables to record
+    spike_threshold=0.0  # Spike detection threshold (mV)
+)
+```
+
+### CPUSimulator (Direct Use)
+
+```python
+from cpu_backed import CPUSimulator
+
+simulator = CPUSimulator(
+    model=None,           # HHModel (default if None)
+    integrator='rk4',     # 'euler', 'rk4', 'rk4rl', 'rk4-scipy'
+    dtype=np.float64      # np.float32 or np.float64
+)
+
+result = simulator.run(
+    T,                    # Total time (ms)
+    dt=0.01,             # Time step (ms)
+    state0=None,         # Initial state (resting if None)
+    stimulus=None,       # Current array
+    batch_size=1,        # Number of neurons
+    record=['V','m','h','n'],  # Variables to record
+    spike_threshold=0.0  # Spike detection threshold (mV)
+)
+```
+
+**Supported Integrators (CPU only):**
+- `'euler'` - Forward Euler (fast, less accurate)
+- `'rk4'` - 4th-order Runge-Kutta (recommended, good balance)
+- `'rk4rl'` - RK4 with Rush-Larsen (better for stiff systems)
+- `'rk4-scipy'` - SciPy's RK45 (adaptive, slower)
+
+### GPUSimulator (Direct Use)
+
+```python
+from gpu_backed import GPUSimulator
+
+simulator = GPUSimulator(
+    model=None,           # HHModel (default if None)
+    integrator='rk4',     # Only 'rk4' is supported
+    dtype='float32'       # GPU uses float32
+)
+
+result = simulator.run(
+    T,                    # Total time (ms)
+    dt=0.01,             # Time step (ms)
+    state0=None,         # Initial state (resting if None)
+    stimulus=None,       # Current array
+    batch_size=1,        # Number of neurons
+    record=['V','m','h','n'],  # Variables to record
+    spike_threshold=0.0  # Spike detection threshold (mV)
+)
+```
+
+**Note:** GPU simulator requires CuPy and CUDA. Only RK4 integrator is supported. Raises `ValueError` if a different integrator is specified.
+```
+
+### SimulationResult
+
+```python
+result.time            # Time array
+result.V               # Voltage trace
+result.m, result.h, result.n  # Gating variables
+result.spikes          # Spike detection results
+
+result.get_spike_count()    # Number of spikes
+result.get_spike_times()    # Spike times
+result.summary()            # Text summary
+result.plot()               # Create plots
+```
+
 ## Performance Tips
 
 1. **Choose proper dt:**
@@ -277,61 +448,28 @@ spike_times = result.get_spike_times()
 
 ## Examples
 
-Run the included demo:
+Run the included demos:
+
+### CPU example
 
 ```bash
 python demo_basic.py
 ```
 
 This will generate two plots:
-- `hh_simulation_basic.png` - Single neuron simulation
-- `hh_simulation_batch.png` - Batch simulation with 5 neurons
+- `cpu_single_neuron_demo.png` - Single neuron simulation
+- `cpu_batch_simulation_demo.png` - Batch simulation with 5 neurons
 
-## API Reference
 
-### HHModel
+### GPU example
 
-```python
-model = HHModel(params=None)  # Create with optional custom parameters
-model.set_params(g_Na=100.0)  # Update parameters
-params = model.get_params()    # Get HHParameters object
-state = model.resting_state(batch_size=1)  # Get resting state
+```bash
+python demo_gpu.py
 ```
 
-### Simulator
-
-```python
-simulator = Simulator(
-    model=None,           # HHModel (default if None)
-    backend='cpu',        # Only 'cpu' backend supported
-    integrator='rk4',     # 'euler', 'rk4', or 'rk4rl'
-    dtype=np.float64      # np.float32 or np.float64
-)
-
-result = simulator.run(
-    T,                    # Total time (ms)
-    dt=0.01,             # Time step (ms)
-    state0=None,         # Initial state (resting if None)
-    stimulus=None,       # Current array
-    batch_size=1,        # Number of neurons
-    record=['V','m','h','n'],  # Variables to record
-    spike_threshold=0.0  # Spike detection threshold (mV)
-)
-```
-
-### SimulationResult
-
-```python
-result.time            # Time array
-result.V               # Voltage trace
-result.m, result.h, result.n  # Gating variables
-result.spikes          # Spike detection results
-
-result.get_spike_count()    # Number of spikes
-result.get_spike_times()    # Spike times
-result.summary()            # Text summary
-result.plot()               # Create plots
-```
+This will generate two plots:
+- `gpu_single_neuron_demo.png` - Single neuron simulation
+- `gpu_batch_simulation_demo.png` - Batch simulation with 5 neurons
 
 ## Testing & Validation
 

@@ -140,7 +140,7 @@ def plot_results(batch_sizes, rk4_results, scipy_results, T, dt):
     # Create figure with subplots
     fig, axes = plt.subplots(1, 3, figsize=(18, 5))
     
-    # Plot 1: Absolute times (log scale)
+    # Plot 1: Absolute times (linear scale for y-axis)
     ax = axes[0]
     ax.errorbar(batch_sizes, rk4_times, yerr=rk4_stds, 
                 marker='o', label='RK4 (Hand-written)', linewidth=2, capsize=4)
@@ -150,7 +150,7 @@ def plot_results(batch_sizes, rk4_results, scipy_results, T, dt):
     ax.set_ylabel('Time (seconds)', fontsize=12)
     ax.set_title('Absolute Runtime Comparison', fontsize=14, fontweight='bold')
     ax.set_xscale('log')
-    ax.set_yscale('log')
+    ax.set_yscale('linear')
     ax.legend(fontsize=10)
     ax.grid(True, alpha=0.3)
     
