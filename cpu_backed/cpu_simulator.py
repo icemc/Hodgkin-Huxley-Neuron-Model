@@ -9,44 +9,36 @@ import numpy as np
 from typing import Optional, List
 import warnings
 
-from hh_core.api import HHModel, Stimulus, SimulationResult
+from hh_core.api import HHModel, Stimulus, SimulationResult, BaseSimulator
 from hh_core.models import HHState
 from .vectorized import VectorizedSimulator
 
 
-class Simulator:
+class CPUSimulator(BaseSimulator):
     """
-    Main simulator class for HH neurons (CPU backend).
+    CPU-based simulator for HH neurons.
     
     Uses vectorized NumPy implementation optimized for batch simulations.
     """
     
     def __init__(self, 
                  model: Optional[HHModel] = None,
-                 backend: str = 'cpu',
                  integrator: str = 'rk4',
                  dtype=np.float64):
         """
-        Initialize simulator.
+        Initialize CPU simulator.
         
         Args:
             model: HH model (creates default if None)
-            backend: 'cpu' (only supported backend)
             integrator: 'euler', 'rk4', 'rk4rl' (RK4 with Rush-Larsen), or 'rk4-scipy'
             dtype: Data type for arrays (np.float32 or np.float64)
         """
-        self.model = model if model is not None else HHModel()
-        self.backend = backend
-        self.integrator = integrator
-        self.dtype = dtype
+        super().__init__(model, integrator, dtype)
         
         # Create backend simulator
-        if backend == 'cpu':
-            self.sim = VectorizedSimulator(
-                self.model.params, integrator, dtype
-            )
-        else:
-            raise ValueError(f"Unknown backend: {backend}. Only 'cpu' backend is supported.")
+        self.sim = VectorizedSimulator(
+            self.model.params, integrator, dtype
+        )
     
     def run(self,
             T: float,
@@ -84,16 +76,15 @@ class Simulator:
         if record is None:
             record = ['V', 'm', 'h', 'n']
         
-        # Run simulation based on backend
-        if self.backend == 'cpu':
-            results = self.sim.run(
-                T=T, dt=dt, state0=state0, stimulus=stimulus,
-                batch_size=batch_size, record_vars=record,
-                spike_threshold=spike_threshold
-            )
+        # Run simulation
+        results = self.sim.run(
+            T=T, dt=dt, state0=state0, stimulus=stimulus,
+            batch_size=batch_size, record_vars=record,
+            spike_threshold=spike_threshold
+        )
         
         return SimulationResult(results, self.model.params, dt)
 
 
 # Re-export for convenience
-__all__ = ['Simulator', 'HHModel', 'Stimulus', 'SimulationResult']
+__all__ = ['CPUSimulator', 'HHModel', 'Stimulus', 'SimulationResult']

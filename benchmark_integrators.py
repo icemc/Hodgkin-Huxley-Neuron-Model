@@ -11,7 +11,7 @@ import time
 import sys
 import os
 
-from cpu_backed import Simulator, HHModel
+from cpu_backed import CPUSimulator, HHModel
 
 
 def benchmark_integrator(integrator_type, T, dt, batch_size, n_runs=5):
@@ -29,7 +29,7 @@ def benchmark_integrator(integrator_type, T, dt, batch_size, n_runs=5):
         Dictionary with timing statistics
     """
     model = HHModel()
-    simulator = Simulator(model=model, backend='cpu', integrator=integrator_type, dtype=np.float64)
+    simulator = CPUSimulator(model=model, integrator=integrator_type, dtype=np.float64)
     
     # Create stimulus (constant current)
     n_steps = int(T / dt) + 1

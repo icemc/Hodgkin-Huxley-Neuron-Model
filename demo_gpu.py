@@ -2,7 +2,7 @@
 Demo: GPU-accelerated Hodgkin-Huxley batch simulation.
 
 Demonstrates GPU acceleration by simulating multiple neurons with
-different stimulus intensities in parallel.
+different stimulus intensities in parallel using the unified simulator.
 """
 
 import numpy as np
@@ -18,8 +18,7 @@ except ImportError:
     print("Please install: pip install cupy-cuda11x (or cuda12x)")
     sys.exit(1)
 
-from gpu_backed import GPUSimulator
-from hh_core.models import HHParameters
+from simulator import Simulator, HHModel
 
 
 def demo_single_neuron():
@@ -41,8 +40,8 @@ def demo_single_neuron():
     
     # Run simulation
     print("Running GPU simulation...")
-    simulator = GPUSimulator()
-    result = simulator.run(T, dt, batch_size=1, stimulus=stimulus, record_vars=['V', 'm', 'h', 'n'])
+    simulator = Simulator(backend='gpu', dtype=np.float32)
+    result = simulator.run(T, dt, batch_size=1, stimulus=stimulus, record=['V', 'm', 'h', 'n'])
     
     print(f"✓ Complete! Simulated {result.batch_size} neuron(s)")
     
@@ -120,8 +119,8 @@ def demo_batch_simulation():
     
     # Run simulation
     print("Running batch simulation...")
-    simulator = GPUSimulator()
-    result = simulator.run(T, dt, batch_size=batch_size, stimulus=stimulus, record_vars=['V'])
+    simulator = Simulator(backend='gpu', dtype=np.float32)
+    result = simulator.run(T, dt, batch_size=batch_size, stimulus=stimulus, record=['V'])
     
     print("Complete!")
     print()

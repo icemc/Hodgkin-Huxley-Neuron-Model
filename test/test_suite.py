@@ -32,7 +32,7 @@ except ImportError:
 from hh_core.models import HHParameters, HHState, derivatives
 from hh_core import RK4, ForwardEuler
 from hh_core.utils import Stimulus as StimGen
-from cpu_backed import Simulator, HHModel, Stimulus, VectorizedSimulator
+from cpu_backed import CPUSimulator, HHModel, Stimulus, VectorizedSimulator
 
 
 # Helper function to extract single neuron data (handles both 1D and 2D arrays)
@@ -55,7 +55,7 @@ class TestBasicFunctionality:
         """Test that all modules can be imported."""
         from hh_core import HHParameters, HHState, RK4, ForwardEuler
         from hh_core.utils import Stimulus
-        from cpu_backed import VectorizedSimulator, Simulator, HHModel
+        from cpu_backed import VectorizedSimulator, CPUSimulator, HHModel
         
         # If we get here, all imports succeeded
         assert True
@@ -88,7 +88,7 @@ class TestBasicFunctionality:
     def test_basic_simulation(self):
         """Test basic single neuron simulation."""
         model = HHModel()
-        simulator = Simulator(model=model, backend='cpu', integrator='rk4')
+        simulator = CPUSimulator(model=model, integrator='rk4')
         
         stimulus = Stimulus.step(10.0, 10.0, 40.0, 50.0, 0.01)
         
@@ -110,7 +110,7 @@ class TestBasicFunctionality:
     def test_batch_simulation(self):
         """Test batch simulation."""
         model = HHModel()
-        simulator = Simulator(model=model, backend='cpu', integrator='rk4')
+        simulator = CPUSimulator(model=model, integrator='rk4')
         
         batch_size = 5
         stimulus = Stimulus.step(10.0, 10.0, 40.0, 50.0, 0.01)
@@ -137,7 +137,7 @@ class TestBasicFunctionality:
         model = HHModel()
         stimulus = Stimulus.step(10.0, 10.0, 40.0, 50.0, 0.01)
         
-        simulator = Simulator(model=model, backend='cpu', integrator=integrator)
+        simulator = CPUSimulator(model=model, integrator=integrator)
         result = simulator.run(T=50.0, dt=0.01, stimulus=stimulus)
         
         assert result.V is not None
@@ -150,11 +150,11 @@ class TestBasicFunctionality:
         stimulus = Stimulus.step(10.0, 10.0, 40.0, 50.0, 0.01)
         
         # Run with hand-written RK4
-        sim_rk4 = Simulator(model=model, backend='cpu', integrator='rk4')
+        sim_rk4 = CPUSimulator(model=model, integrator='rk4')
         result_rk4 = sim_rk4.run(T=50.0, dt=0.01, stimulus=stimulus)
         
         # Run with scipy RK45
-        sim_scipy = Simulator(model=model, backend='cpu', integrator='rk4-scipy')
+        sim_scipy = CPUSimulator(model=model, integrator='rk4-scipy')
         result_scipy = sim_scipy.run(T=50.0, dt=0.01, stimulus=stimulus)
         
         # Both should produce similar results (within reasonable tolerance)
@@ -185,7 +185,7 @@ class TestPhysiologicalBehavior:
     def test_resting_potential(self):
         """Test that resting potential is approximately -65 mV."""
         model = HHModel()
-        simulator = Simulator(model=model, backend='cpu', integrator='rk4')
+        simulator = CPUSimulator(model=model, integrator='rk4')
         
         # Run with no stimulus
         result = simulator.run(T=100.0, dt=0.01, stimulus=None)
@@ -200,7 +200,7 @@ class TestPhysiologicalBehavior:
     def test_spike_threshold(self):
         """Test that rheobase is in the expected range."""
         model = HHModel()
-        simulator = Simulator(model=model, backend='cpu', integrator='rk4')
+        simulator = CPUSimulator(model=model, integrator='rk4')
         
         # Test different current amplitudes
         currents = np.arange(3.0, 10.0, 0.5)
@@ -224,7 +224,7 @@ class TestPhysiologicalBehavior:
     def test_action_potential_amplitude(self):
         """Test that action potential amplitude is physiologically realistic."""
         model = HHModel()
-        simulator = Simulator(model=model, backend='cpu', integrator='rk4')
+        simulator = CPUSimulator(model=model, integrator='rk4')
         
         stim = Stimulus.step(10.0, 10.0, 40.0, 100.0, 0.01)
         result = simulator.run(T=100.0, dt=0.01, stimulus=stim)
@@ -244,7 +244,7 @@ class TestPhysiologicalBehavior:
     def test_firing_rate_increases_with_current(self):
         """Test that firing rate increases monotonically with input current (F-I curve)."""
         model = HHModel()
-        simulator = Simulator(model=model, backend='cpu', integrator='rk4')
+        simulator = CPUSimulator(model=model, integrator='rk4')
         
         currents = [8.0, 10.0, 12.0, 15.0, 20.0]
         firing_rates = []
@@ -276,7 +276,7 @@ class TestGatingVariables:
     def test_gating_variables_stay_in_bounds(self):
         """Test that all gating variables stay in [0, 1]."""
         model = HHModel()
-        simulator = Simulator(model=model, backend='cpu', integrator='rk4')
+        simulator = CPUSimulator(model=model, integrator='rk4')
         
         stim = Stimulus.step(15.0, 10.0, 100.0, 150.0, 0.01)
         result = simulator.run(T=150.0, dt=0.01, stimulus=stim)
@@ -292,7 +292,7 @@ class TestGatingVariables:
     def test_resting_gating_values(self):
         """Test that gating variables settle to correct steady-state at rest."""
         model = HHModel()
-        simulator = Simulator(model=model, backend='cpu', integrator='rk4')
+        simulator = CPUSimulator(model=model, integrator='rk4')
         
         result = simulator.run(T=100.0, dt=0.01, stimulus=None)
         
@@ -540,7 +540,7 @@ class TestRK4Accuracy:
         
         # Solve with our implementation
         model = HHModel()
-        simulator = Simulator(model=model, backend='cpu', integrator='rk4')
+        simulator = CPUSimulator(model=model, integrator='rk4')
         stim = Stimulus.step(10.0, 10.0, 40.0, 100.0, 0.01)
         result_ours = simulator.run(T=100.0, dt=0.01, stimulus=stim)
         
@@ -619,7 +619,7 @@ class TestNumericalProperties:
         max_voltages = []
         
         for dt in dts:
-            simulator = Simulator(model=model, backend='cpu', integrator='rk4')
+            simulator = CPUSimulator(model=model, integrator='rk4')
             stim = Stimulus.step(10.0, 10.0, 40.0, 100.0, dt)
             result = simulator.run(T=100.0, dt=dt, stimulus=stim)
             
@@ -735,11 +735,11 @@ class TestNumericalProperties:
         stim = Stimulus.step(10.0, 10.0, 40.0, 100.0, 0.01)
         
         # Run with RK4
-        sim_rk4 = Simulator(model=model, backend='cpu', integrator='rk4')
+        sim_rk4 = CPUSimulator(model=model, integrator='rk4')
         result_rk4 = sim_rk4.run(T=100.0, dt=0.01, stimulus=stim)
         
         # Run with RK4-RL
-        sim_rk4rl = Simulator(model=model, backend='cpu', integrator='rk4rl')
+        sim_rk4rl = CPUSimulator(model=model, integrator='rk4rl')
         result_rk4rl = sim_rk4rl.run(T=100.0, dt=0.01, stimulus=stim)
         
         # Compare spike counts
@@ -757,7 +757,7 @@ class TestNumericalProperties:
     def test_no_nans_or_infs(self):
         """Test that simulation doesn't produce NaN or Inf values."""
         model = HHModel()
-        simulator = Simulator(model=model, backend='cpu', integrator='rk4')
+        simulator = CPUSimulator(model=model, integrator='rk4')
         
         stim = Stimulus.step(10.0, 10.0, 40.0, 100.0, 0.01)
         result = simulator.run(T=100.0, dt=0.01, stimulus=stim)
@@ -782,11 +782,11 @@ class TestBatchConsistency:
         stim = Stimulus.step(10.0, 10.0, 40.0, 100.0, 0.01)
         
         # Single neuron
-        sim_single = Simulator(model=model, backend='cpu', integrator='rk4')
+        sim_single = CPUSimulator(model=model, integrator='rk4')
         result_single = sim_single.run(T=100.0, dt=0.01, stimulus=stim, batch_size=1)
         
         # Batch of 1
-        sim_batch = Simulator(model=model, backend='cpu', integrator='rk4')
+        sim_batch = CPUSimulator(model=model, integrator='rk4')
         result_batch = sim_batch.run(T=100.0, dt=0.01, stimulus=stim, batch_size=1)
         
         # Should give identical results
@@ -796,7 +796,7 @@ class TestBatchConsistency:
     def test_batch_independence(self):
         """Test that neurons in batch are independent (same stimulus → same output)."""
         model = HHModel()
-        simulator = Simulator(model=model, backend='cpu', integrator='rk4')
+        simulator = CPUSimulator(model=model, integrator='rk4')
         
         batch_size = 5
         stim = Stimulus.step(10.0, 10.0, 40.0, 100.0, 0.01)

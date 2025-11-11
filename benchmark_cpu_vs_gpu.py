@@ -20,7 +20,7 @@ except ImportError:
     print("✗ CuPy not found - GPU benchmarking disabled")
     print("  Install with: pip install cupy-cuda11x")
 
-from cpu_backed import Simulator, HHModel
+from cpu_backed import CPUSimulator, HHModel
 if GPU_AVAILABLE:
     from gpu_backed import GPUSimulator
 from hh_core.models import HHParameters
@@ -29,7 +29,7 @@ from hh_core.models import HHParameters
 def benchmark_cpu(T, dt, batch_size, n_runs=5):
     """Benchmark CPU implementation."""
     model = HHModel()
-    simulator = Simulator(model=model, backend='cpu', integrator='rk4', dtype=np.float64)
+    simulator = CPUSimulator(model=model, integrator='rk4', dtype=np.float64)
     
     # Warmup
     _ = simulator.run(T, dt, batch_size=batch_size, record=['V'])

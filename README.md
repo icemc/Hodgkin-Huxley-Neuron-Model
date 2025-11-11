@@ -119,16 +119,20 @@ While Hodgkin-Huxley equations are **sequential in time** (each step depends on 
 
 ### Performance Comparison
 
-Benchmark results (50ms simulation, dt=0.01ms, RTX 3070 Ti):
+Benchmark results (50ms simulation, dt=0.01ms, 5000 steps, 5 runs per test, RTX 3070 Ti Laptop GPU):
 
 | Batch Size | CPU Time | GPU Time | Speedup |
 |-----------|----------|----------|---------|
-| 1 neuron | 1.02s | 0.33s | **3.1x** |
-| 100 neurons | 1.76s | 0.28s | **6.2x** |
-| 1,000 neurons | 3.09s | 0.28s | **11.1x** |
-| 10,000 neurons | 15.03s | 0.33s | **45.8x** |
+| 1 neuron | 0.76s | 0.32s | **2.36x** |
+| 10 neurons | 1.33s | 0.26s | **5.04x** |
+| 50 neurons | 1.35s | 0.26s | **5.29x** |
+| 100 neurons | 1.51s | 0.22s | **6.94x** |
+| 500 neurons | 2.30s | 0.22s | **10.56x** |
+| 1,000 neurons | 3.59s | 0.27s | **13.12x** |
+| 5,000 neurons | 12.28s | 0.68s | **18.03x** |
+| 10,000 neurons | 23.30s | 1.26s | **18.44x** |
 
-**Key observation:** GPU time stays nearly constant (~0.3s) regardless of batch size, while CPU time scales linearly.
+**Key observation:** GPU time stays relatively constant (~0.2-0.3s) for small to medium batch sizes, while CPU time scales linearly. Maximum speedup of **18.44x** achieved at 10,000 neurons.
 
 ### GPU Usage Example
 

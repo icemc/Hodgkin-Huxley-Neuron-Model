@@ -7,6 +7,7 @@ This module provides user-friendly classes for running HH simulations.
 import numpy as np
 from typing import Optional, Union, List, Dict
 import warnings
+from abc import ABC, abstractmethod
 
 from .models import HHParameters, HHState
 from .utils import Stimulus as StimGen
@@ -95,6 +96,56 @@ class Stimulus:
             duration: float, dt: float) -> np.ndarray:
         """Generate ramping current."""
         return StimGen.ramp(start_amplitude, end_amplitude, duration, dt)
+
+
+class BaseSimulator(ABC):
+    """
+    Abstract base class for Hodgkin-Huxley simulators.
+    
+    Defines the interface that all simulator backends (CPU, GPU) must implement.
+    """
+    
+    def __init__(self, 
+                 model: Optional[HHModel] = None,
+                 integrator: str = 'rk4',
+                 dtype=np.float64):
+        """
+        Initialize simulator.
+        
+        Args:
+            model: HH model (creates default if None)
+            integrator: Integration method ('euler', 'rk4', 'rk4rl', 'rk4-scipy')
+            dtype: Data type for arrays (np.float32 or np.float64)
+        """
+        self.model = model if model is not None else HHModel()
+        self.integrator = integrator
+        self.dtype = dtype
+    
+    @abstractmethod
+    def run(self,
+            T: float,
+            dt: float = 0.01,
+            state0: Optional[HHState] = None,
+            stimulus: Optional[np.ndarray] = None,
+            batch_size: int = 1,
+            record: Optional[List[str]] = None,
+            spike_threshold: float = 0.0) -> 'SimulationResult':
+        """
+        Run simulation (must be implemented by subclasses).
+        
+        Args:
+            T: Total simulation time (ms)
+            dt: Time step (ms)
+            state0: Initial state (creates resting state if None)
+            stimulus: External current array
+            batch_size: Number of neurons (ignored if state0 provided)
+            record: Variables to record ['V', 'm', 'h', 'n']
+            spike_threshold: Threshold for spike detection (mV)
+        
+        Returns:
+            SimulationResult object with recorded data
+        """
+        pass
 
 
 class SimulationResult:

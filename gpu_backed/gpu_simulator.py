@@ -20,8 +20,8 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from hh_core.models import HHParameters
-from hh_core.api import SimulationResult
+from hh_core.models import HHParameters, HHState
+from hh_core.api import SimulationResult, BaseSimulator, HHModel
 from hh_core.utils import detect_spikes, interpolate_spike_times
 
 
@@ -142,7 +142,7 @@ void rk4_step_kernel(
 '''
 
 
-class GPUSimulator:
+class GPUSimulator(BaseSimulator):
     """
     GPU-accelerated Hodgkin-Huxley simulator using custom CUDA kernels.
     
@@ -151,12 +151,16 @@ class GPUSimulator:
     neuron, allowing SIMD parallelism across the batch.
     """
     
-    def __init__(self, params: Optional[HHParameters] = None, dtype='float32'):
+    def __init__(self, 
+                 model: Optional[HHModel] = None,
+                 integrator: str = 'rk4',
+                 dtype='float32'):
         """
         Initialize GPU simulator with custom CUDA kernel.
         
         Args:
-            params: Model parameters (uses defaults if None)
+            model: HH model (creates default if None)
+            integrator: Only 'rk4' is supported for GPU (ignored)
             dtype: 'float32' or 'float64' (float32 recommended for GPU)
         
         Raises:
@@ -168,7 +172,8 @@ class GPUSimulator:
                 "Install with: pip install cupy-cuda11x  (or cuda12x for CUDA 12)"
             )
         
-        self.params = params if params is not None else HHParameters()
+        # Initialize base class (will create model if None)
+        super().__init__(model, integrator='rk4', dtype=np.float32)
         
         if dtype != 'float32':
             raise NotImplementedError("Only float32 is currently supported for GPU kernels")
@@ -199,12 +204,15 @@ class GPUSimulator:
     
     def run(self,
             T: float,
-            dt: float,
-            batch_size: int = 1,
+            dt: float = 0.01,
+            state0: Optional[HHState] = None,
             stimulus: Optional[np.ndarray] = None,
+            batch_size: int = 1,
+            record: Optional[list] = None,
+            spike_threshold: float = 0.0,
+            # Backward compatibility
             record_vars: Optional[list] = None,
-            record_all: bool = None,
-            spike_threshold: float = 0.0) -> Dict:
+            record_all: bool = None) -> SimulationResult:
         """
         Run batch simulation on GPU using custom CUDA kernels.
         
@@ -213,26 +221,34 @@ class GPUSimulator:
         Args:
             T: Total simulation time (ms)
             dt: Time step (ms)
-            batch_size: Number of neurons to simulate in parallel
+            state0: Initial state (ignored, uses resting state)
             stimulus: External current array, shape (n_steps,) or (n_steps, batch_size)
-            record_vars: List of variables to record ['V', 'm', 'h', 'n'] (default: all)
-            record_all: Deprecated, use record_vars instead
+            batch_size: Number of neurons to simulate in parallel
+            record: List of variables to record ['V', 'm', 'h', 'n'] (default: all)
             spike_threshold: Threshold for spike detection (mV)
+            record_vars: (Deprecated) use 'record' instead
+            record_all: (Deprecated) use 'record' instead
+        
         Returns:
-            Dictionary with simulation results (all on CPU/NumPy arrays)
+            SimulationResult object with recorded data
         """
         # Handle backward compatibility
         if record_all is not None:
             import warnings
-            warnings.warn("record_all is deprecated, use record_vars instead", DeprecationWarning)
+            warnings.warn("record_all is deprecated, use record instead", DeprecationWarning)
             if record_all:
-                record_vars = ['V', 'm', 'h', 'n']
+                record = ['V', 'm', 'h', 'n']
             else:
-                record_vars = ['V']
+                record = ['V']
+        
+        if record_vars is not None:
+            import warnings
+            warnings.warn("record_vars is deprecated, use record instead", DeprecationWarning)
+            record = record_vars
         
         # Default to recording all variables
-        if record_vars is None:
-            record_vars = ['V', 'm', 'h', 'n']
+        if record is None:
+            record = ['V', 'm', 'h', 'n']
         
         # Setup time - use same calculation as CPU for consistency
         n_steps = int(T / dt)
@@ -283,10 +299,28 @@ class GPUSimulator:
         else:
             stimulus = np.asarray(stimulus)
             if stimulus.ndim == 1:
+                # Handle different stimulus lengths (with or without final timestep)
+                if len(stimulus) == n_steps:
+                    # Pad with last value to match n_steps + 1
+                    stimulus = np.pad(stimulus, (0, 1), 'edge')
+                elif len(stimulus) != n_steps + 1:
+                    raise ValueError(
+                        f"Stimulus length {len(stimulus)} doesn't match expected "
+                        f"n_steps ({n_steps}) or n_steps+1 ({n_steps+1})"
+                    )
                 # Broadcast to all neurons
                 I_ext_gpu = cp.asarray(stimulus[:, np.newaxis], dtype=self.dtype)
                 I_ext_gpu = cp.broadcast_to(I_ext_gpu, (n_steps + 1, batch_size)).copy()
             else:
+                # Handle 2D stimulus
+                if stimulus.shape[0] == n_steps:
+                    # Pad with last row
+                    stimulus = np.pad(stimulus, ((0, 1), (0, 0)), 'edge')
+                elif stimulus.shape[0] != n_steps + 1:
+                    raise ValueError(
+                        f"Stimulus length {stimulus.shape[0]} doesn't match expected "
+                        f"n_steps ({n_steps}) or n_steps+1 ({n_steps+1})"
+                    )
                 I_ext_gpu = cp.asarray(stimulus, dtype=self.dtype)
         
         # Allocate recording arrays on GPU
@@ -294,7 +328,7 @@ class GPUSimulator:
         V_rec[0] = V
         
         # Optionally record gating variables
-        record_gating = any(var in record_vars for var in ['m', 'h', 'n'])
+        record_gating = any(var in record for var in ['m', 'h', 'n'])
         if record_gating:
             m_rec = cp.zeros((n_steps + 1, batch_size), dtype=self.dtype)
             h_rec = cp.zeros((n_steps + 1, batch_size), dtype=self.dtype)
@@ -307,13 +341,13 @@ class GPUSimulator:
         grid_size, block_size = self._compute_grid_size(batch_size)
         
         # Model parameters as scalars
-        C_m = float(self.params.C_m)
-        g_Na = float(self.params.g_Na)
-        g_K = float(self.params.g_K)
-        g_L = float(self.params.g_L)
-        E_Na = float(self.params.E_Na)
-        E_K = float(self.params.E_K)
-        E_L = float(self.params.E_L)
+        C_m = float(self.model.params.C_m)
+        g_Na = float(self.model.params.g_Na)
+        g_K = float(self.model.params.g_K)
+        g_L = float(self.model.params.g_L)
+        E_Na = float(self.model.params.E_Na)
+        E_K = float(self.model.params.E_K)
+        E_L = float(self.model.params.E_L)
         
         # Main integration loop - launch kernel for each time step
         for i in range(n_steps):
@@ -353,20 +387,20 @@ class GPUSimulator:
         }
         
         # Add requested variables to result
-        if 'm' in record_vars and record_gating:
+        if 'm' in record and record_gating:
             results['m'] = cp.asnumpy(m_rec)
-        if 'h' in record_vars and record_gating:
+        if 'h' in record and record_gating:
             results['h'] = cp.asnumpy(h_rec)
-        if 'n' in record_vars and record_gating:
+        if 'n' in record and record_gating:
             results['n'] = cp.asnumpy(n_rec)
         
         # Detect spikes if V was recorded
-        if 'V' in record_vars:
+        if 'V' in record:
             results['spikes'] = self._detect_spikes_batch(
                 results['V'], time, spike_threshold, batch_size
             )
         
-        return SimulationResult(results, self.params, dt)
+        return SimulationResult(results, self.model.params, dt)
     
     def _detect_spikes_batch(self, voltage: np.ndarray, time: np.ndarray,
                             threshold: float, batch_size: int):
@@ -411,7 +445,7 @@ class GPUSimulator:
         import time
         
         # Warmup run
-        _ = self.run(T, dt, batch_size=batch_size, record_vars=['V'])
+        _ = self.run(T, dt, batch_size=batch_size, record=['V'])
         cp.cuda.Stream.null.synchronize()
         
         # Benchmark runs
@@ -420,7 +454,7 @@ class GPUSimulator:
             cp.cuda.Stream.null.synchronize()
             start = time.perf_counter()
             
-            _ = self.run(T, dt, batch_size=batch_size, record_vars=['V'])
+            _ = self.run(T, dt, batch_size=batch_size, record=['V'])
             
             cp.cuda.Stream.null.synchronize()
             end = time.perf_counter()

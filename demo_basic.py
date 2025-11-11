@@ -1,14 +1,14 @@
 """
 Example: Basic Hodgkin-Huxley simulation
 
-This script demonstrates how to use the CPU-backed HH implementation
-to simulate a single neuron with step current injection.
+This script demonstrates how to use the unified HH simulator
+to simulate neurons with step current injection using the CPU backend.
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
 
-from cpu_backed import HHModel, Simulator, Stimulus
+from simulator import Simulator, HHModel, Stimulus
 
 
 def basic_demo():
@@ -56,8 +56,8 @@ def basic_demo():
     # Create simulator with CPU backend and RK4 integrator
     print("Creating simulator (CPU backend, RK4 integrator)...")
     simulator = Simulator(
-        model=model,
         backend='cpu',
+        model=model,
         integrator='rk4',
         dtype=np.float64
     )

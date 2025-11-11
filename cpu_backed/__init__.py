@@ -2,11 +2,11 @@
 CPU Backend - Optimized CPU implementations for HH simulations.
 """
 
-from .cpu_simulator import Simulator, HHModel, Stimulus, SimulationResult
+from .cpu_simulator import CPUSimulator, HHModel, Stimulus, SimulationResult
 from .vectorized import VectorizedSimulator
 
 __all__ = [
-    'Simulator',
+    'CPUSimulator',
     'HHModel',
     'Stimulus',
     'SimulationResult',

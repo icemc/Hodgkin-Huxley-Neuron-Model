@@ -4,7 +4,7 @@ Pytest fixtures and configuration for HH tests.
 
 import pytest
 import numpy as np
-from cpu_backed import HHModel, Simulator, Stimulus
+from cpu_backed import HHModel, CPUSimulator, Stimulus
 
 
 @pytest.fixture
@@ -16,7 +16,7 @@ def default_model():
 @pytest.fixture
 def cpu_simulator(default_model):
     """Fixture providing CPU simulator with RK4."""
-    return Simulator(model=default_model, backend='cpu', integrator='rk4')
+    return CPUSimulator(model=default_model, integrator='rk4')
 
 
 @pytest.fixture
@@ -34,7 +34,7 @@ def constant_stimulus():
 @pytest.fixture(params=['rk4', 'rk4rl', 'euler'])
 def all_integrators(request, default_model):
     """Fixture providing all available integrators."""
-    return Simulator(model=default_model, backend='cpu', integrator=request.param)
+    return CPUSimulator(model=default_model, integrator=request.param)
 
 
 def pytest_configure(config):
