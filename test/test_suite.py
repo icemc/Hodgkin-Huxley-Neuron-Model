@@ -126,6 +126,18 @@ class TestBasicFunctionality:
         assert result.V.shape[1] == batch_size
         spike_counts = result.get_spike_count()
         assert len(spike_counts) == batch_size
+    
+    @pytest.mark.parametrize("integrator", ['euler', 'rk4', 'rk4rl'])
+    def test_different_integrators(self, integrator):
+        """Test different integrator types."""
+        model = HHModel()
+        stimulus = Stimulus.step(10.0, 10.0, 40.0, 50.0, 0.01)
+        
+        simulator = Simulator(model=model, backend='cpu', integrator=integrator)
+        result = simulator.run(T=50.0, dt=0.01, stimulus=stimulus)
+        
+        assert result.V is not None
+        assert len(result.V) > 0
 
 
 # ============================================================================
@@ -470,6 +482,45 @@ class TestRK4Accuracy:
         print(f"✓ Three-way comparison:")
         print(f"  CPU vs SciPy: max error = {cpu_scipy_error:.6f} mV")
         print(f"  GPU vs CPU:   max error = {gpu_cpu_error:.6f} mV")
+    
+    def test_scipy_reference_comparison(self):
+        """Compare our implementation against scipy's ODE solver (comprehensive test)."""
+        params = HHParameters()
+        state0 = HHState.resting_state(1)
+        
+        # Define ODE for scipy
+        def ode_func(t, y):
+            state = HHState(y)
+            I_ext = 10.0 if 10.0 <= t <= 40.0 else 0.0
+            return derivatives(state, I_ext, params)
+        
+        # Solve with scipy
+        t_span = (0, 100.0)
+        t_eval = np.linspace(0, 100.0, 10001)
+        sol_scipy = solve_ivp(
+            ode_func, t_span, state0.data, 
+            method='RK45', t_eval=t_eval, 
+            rtol=1e-6, atol=1e-8
+        )
+        
+        # Solve with our implementation
+        model = HHModel()
+        simulator = Simulator(model=model, backend='cpu', integrator='rk4')
+        stim = Stimulus.step(10.0, 10.0, 40.0, 100.0, 0.01)
+        result_ours = simulator.run(T=100.0, dt=0.01, stimulus=stim)
+        
+        # Compare voltages
+        V_scipy = sol_scipy.y[0, :]
+        V_ours = get_neuron_data(result_ours.V)
+        
+        # Calculate RMSE
+        rmse = np.sqrt(np.mean((V_scipy - V_ours)**2))
+        
+        # Should be quite close (< 2 mV RMSE)
+        assert rmse < 2.0, \
+            f"RMSE vs scipy {rmse:.4f} mV exceeds threshold"
+        
+        print(f"✓ SciPy reference comparison: RMSE = {rmse:.4f} mV")
     
     def _run_scipy_simulation(self, T, dt, stimulus):
         """Run HH simulation using SciPy's solve_ivp."""

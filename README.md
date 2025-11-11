@@ -1,11 +1,12 @@
-# Optimized Hodgkin-Huxley Implementation (Python) - CPU Backend
+# Optimized Hodgkin-Huxley Implementation (Python)
 
-This is the CPU-optimized implementation of the Hodgkin-Huxley neuron model in Python, as described in the design document.
+High-performance CPU and GPU implementations of the Hodgkin-Huxley neuron model in Python.
 
 ## Overview
 
 This implementation provides:
-- **High-performance vectorized NumPy** implementation for batch simulations
+- **GPU acceleration**: Custom CUDA kernels with 3-45x speedup for batch simulations
+- **High-performance vectorized NumPy** for CPU batch simulations
 - **Multiple integration methods**: Forward Euler, RK4, and RK4 with Rush-Larsen
 - **Flexible stimulus generation**: step, pulse train, ramp, noisy currents
 - **Spike detection** with interpolation for precise timing
@@ -18,22 +19,24 @@ project/
 ├── .github/                   # GitHub workflows and CI configuration
 ├── hh_core/                   # Core HH equations and integrators
 │   ├── __init__.py
+│   ├── api.py                 # SimulationResult, Stimulus, HHModel
 │   ├── models.py              # HH equations, parameters, gating kinetics
 │   ├── integrators.py         # RK4, Euler, Rush-Larsen integrators
 │   └── utils.py               # Stimulus generation, spike detection
 ├── cpu_backed/                # CPU-optimized implementations
 │   ├── __init__.py
+│   ├── cpu_simulator.py       # Wrapper around Vectorized simulator
 │   └── vectorized.py          # NumPy vectorized simulator
+├── gpu_backed/                # GPU-optimized implementations
+│   ├── __init__.py
+│   └── gpu_simulator.py       # CuPy GPU simulator
 ├── test/                      # Pytest test suite
 │   ├── __init__.py
 │   ├── conftest.py            # Pytest fixtures and configuration
-│   ├── test_basic.py          # Basic functionality tests
-│   └── test_validation.py    # Comprehensive validation tests
-├── docs/                      # Additional documentation
+│   └── test_suite.py          # Comprehensive test suite (32 tests)
 ├── plots/                     # Generated plots from demos and tests
-├── hh_optimized.py            # High-level API (HHModel, Simulator, Stimulus)
-├── demo_basic.py              # Example usage script
-├── validate.py                # Validation script wrapper
+├── demo_basic.py              # Example usage script with cpu simulator
+├── demo_gpu.py                # Example usage script with gpu simulator
 ├── pytest.ini                 # Pytest configuration
 ├── requirements.txt           # Python dependencies
 ├── TESTING.md                 # Testing documentation
@@ -102,6 +105,72 @@ result = simulator.run(
 # Voltage shape: (n_steps, batch_size)
 print(result.V.shape)
 ```
+
+## GPU Acceleration
+
+This project includes a **GPU-accelerated implementation** using custom CUDA kernels via CuPy. The GPU simulator provides **3-45x speedup** depending on batch size.
+
+### Why GPU?
+
+While Hodgkin-Huxley equations are **sequential in time** (each step depends on the previous), they are **parallel across neurons**. The GPU implementation exploits this spatial parallelism:
+
+- **CPU:** Simulates neurons sequentially (even with vectorization)
+- **GPU:** Each CUDA thread independently simulates one neuron
+
+### Performance Comparison
+
+Benchmark results (50ms simulation, dt=0.01ms, RTX 3070 Ti):
+
+| Batch Size | CPU Time | GPU Time | Speedup |
+|-----------|----------|----------|---------|
+| 1 neuron | 1.02s | 0.33s | **3.1x** |
+| 100 neurons | 1.76s | 0.28s | **6.2x** |
+| 1,000 neurons | 3.09s | 0.28s | **11.1x** |
+| 10,000 neurons | 15.03s | 0.33s | **45.8x** |
+
+**Key observation:** GPU time stays nearly constant (~0.3s) regardless of batch size, while CPU time scales linearly.
+
+### GPU Usage Example
+
+```python
+from gpu_backed import GPUSimulator
+from hh_core import Stimulus
+
+# Create GPU simulator (automatically uses float32)
+simulator = GPUSimulator()
+
+# Create stimulus
+stim = Stimulus.constant(amplitude=10.0, duration=100.0, dt=0.01)
+
+# Run simulation (10,000 neurons in parallel)
+result = simulator.run(
+    T=100.0,
+    dt=0.01,
+    batch_size=10000,
+    stimulus=stim.current,
+    record_vars=['V', 'm', 'h', 'n'],
+    spike_threshold=0.0
+)
+
+# Access results (same API as CPU)
+print(f"Simulated {result.batch_size} neurons")
+print(f"Detected {result.spikes['spike_count'][0]} spikes")
+result.plot()  # Plot results
+```
+
+### Requirements
+
+GPU simulation requires:
+- **NVIDIA GPU** with CUDA support
+- **CuPy** (`pip install cupy-cuda12x` or appropriate version)
+
+If CuPy is not installed, the simulator falls back to CPU automatically.
+
+### Examples and Benchmarks
+
+- **Demo:** `python demo_gpu.py` - GPU batch simulation with plotting
+- **Benchmark:** `python benchmark_cpu_vs_gpu.py` - Comprehensive CPU vs GPU comparison
+- **Details:** See `gpu_backed/README.md` for CUDA kernel implementation details
 
 ## Features
 
@@ -255,11 +324,11 @@ result.plot()               # Create plots
 
 ## Testing & Validation
 
-A comprehensive test suite validates the implementation with **28 tests** covering CPU, GPU, and SciPy implementations using pytest.
+A comprehensive test suite validates the implementation with **32 tests** covering CPU, GPU, and SciPy implementations using pytest.
 
 ### Run All Tests
 ```bash
-# Run the comprehensive test suite (28 tests)
+# Run the comprehensive test suite (32 tests)
 pytest test/test_suite.py -v
 
 # Run all tests in test directory
@@ -276,14 +345,15 @@ pytest test/ --cov=. --cov-report=html
 
 ### Test Suite Organization (`test/test_suite.py`)
 
-The comprehensive test suite is organized into 5 sections with 28 tests:
+The comprehensive test suite is organized into 7 sections with 32 tests:
 
-#### 1. **Basic Functionality Tests** (5 tests)
+#### 1. **Basic Functionality Tests** (8 tests)
 - Module imports
 - Model and state creation
 - Stimulus generation
 - Single neuron simulation
 - Batch simulation
+- Different integrators (euler, rk4, rk4rl) - 3 parameterized tests
 
 #### 2. **Physiological Validation Tests** (6 tests)
 - **Resting Potential**: Verifies neuron settles to -65 to -70 mV
@@ -293,11 +363,14 @@ The comprehensive test suite is organized into 5 sections with 28 tests:
 - **Gating Variable Bounds**: Ensures m, h, n stay in [0, 1]
 - **Resting Gating Values**: Validates steady-state at rest
 
-#### 3. **Numerical Accuracy Tests - CPU vs GPU vs SciPy** (10 tests)
+#### 3. **RK4 Accuracy Tests - CPU vs GPU vs SciPy** (5 tests)
 - **CPU vs SciPy**: RK4 comparison with reference implementation (max error < 0.0001 mV)
 - **GPU vs CPU Single Neuron**: Validates GPU matches CPU (max error < 0.001 mV)
 - **GPU vs CPU Batch**: Batch simulation accuracy (max error < 0.1 mV)
 - **Three-way Comparison**: CPU, GPU, and SciPy consistency
+- **SciPy Reference Comparison**: Comprehensive RMSE validation (< 2 mV)
+
+#### 4. **Numerical Properties Tests** (6 tests)
 - **dt Convergence**: Results converge as timestep decreases
 - **Energy Conservation**: Resting state stability
 - **Deterministic Behavior**: No randomness in simulations
@@ -305,13 +378,13 @@ The comprehensive test suite is organized into 5 sections with 28 tests:
 - **Integrator Consistency**: RK4 vs RK4-Rush-Larsen comparison
 - **Numerical Stability**: No NaN or Inf values
 
-#### 4. **Batch Consistency Tests** (4 tests)
+#### 5. **Batch Consistency Tests** (4 tests)
 - **Single-Batch Equivalence**: batch_size=1 matches single neuron
 - **Batch Independence**: Neurons with same stimulus produce identical results
 - **GPU Batch vs Single**: GPU batch matches individual simulations
 - **CPU-GPU Batch Consistency**: CPU and GPU batches match
 
-#### 5. **Stimulus Generation Tests** (3 tests)
+#### 6. **Stimulus Generation Tests** (3 tests)
 - Step stimulus validation
 - Constant stimulus validation
 - Pulse train stimulus validation
@@ -321,7 +394,7 @@ The comprehensive test suite is organized into 5 sections with 28 tests:
 ```bash
 $ pytest test/test_suite.py -v
 
-28 passed in 112.45s (0:01:52) ✓
+32 passed in 120.08s (0:02:00) ✓
 
 Accuracy achieved:
   • CPU vs SciPy:  max error = 0.000118 mV
@@ -337,14 +410,9 @@ Some tests require optional packages:
 
 Tests automatically skip if dependencies are unavailable.
 
-### Legacy Test Files
+### Detailed Testing Documentation
 
-Individual test files are also available:
-- `test/test_basic.py` - Basic functionality tests
-- `test/test_validation.py` - Physiological validation tests  
-- `test/test_accuracy.py` - GPU/CPU/SciPy accuracy tests
-
-**Recommended**: Use `test/test_suite.py` for comprehensive testing.
+For more detailed information about writing tests, test fixtures, and CI/CD integration, see [TESTING.md](TESTING.md).
 
 ## License
 

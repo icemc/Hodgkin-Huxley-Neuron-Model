@@ -20,13 +20,23 @@ pytest test/ --cov=. --cov-report=html
 
 ## Test Organization
 
+The project uses a comprehensive test suite that consolidates all tests in a single file:
+
 ```
 test/
 ├── __init__.py              # Test package initialization
 ├── conftest.py              # Shared fixtures and configuration
-├── test_basic.py            # Basic functionality tests
-└── test_validation.py       # Comprehensive validation tests
+└── test_suite.py            # Comprehensive test suite (32 tests)
 ```
+
+The test suite is organized into 7 test classes:
+1. **TestBasicFunctionality** - Core functionality and integrators
+2. **TestPhysiologicalBehavior** - Biological realism validation
+3. **TestGatingVariables** - Gating variable constraints
+4. **TestRK4Accuracy** - CPU vs GPU vs SciPy accuracy
+5. **TestNumericalProperties** - Numerical stability and convergence
+6. **TestBatchConsistency** - Batch simulation correctness
+7. **TestStimulusGeneration** - Stimulus generation utilities
 
 ## Running Tests
 
@@ -37,13 +47,13 @@ test/
 pytest test/
 
 # Run specific test file
-pytest test/test_validation.py
+pytest test/test_suite.py
 
 # Run specific test class
-pytest test/test_validation.py::TestPhysiologicalBehavior
+pytest test/test_suite.py::TestPhysiologicalBehavior
 
 # Run specific test method
-pytest test/test_validation.py::TestPhysiologicalBehavior::test_resting_potential
+pytest test/test_suite.py::TestPhysiologicalBehavior::test_resting_potential
 ```
 
 ### Filtering Tests
@@ -100,7 +110,23 @@ pytest test/ --cov=. --cov-report=term-missing
 
 ## Test Categories
 
-### 1. Physiological Behavior (`TestPhysiologicalBehavior`)
+### 1. Basic Functionality (`TestBasicFunctionality`)
+
+Tests core functionality and all integrator types:
+
+- `test_imports`: Module import verification
+- `test_model_creation`: Model and state creation
+- `test_stimulus_generation`: Stimulus generation utilities
+- `test_basic_simulation`: Single neuron simulation
+- `test_batch_simulation`: Batch simulation
+- `test_different_integrators`: All three integrators (euler, rk4, rk4rl)
+
+**Run with:**
+```bash
+pytest test/test_suite.py::TestBasicFunctionality -v
+```
+
+### 2. Physiological Behavior (`TestPhysiologicalBehavior`)
 
 Tests that verify the model produces physiologically realistic behavior:
 
@@ -111,10 +137,10 @@ Tests that verify the model produces physiologically realistic behavior:
 
 **Run with:**
 ```bash
-pytest test/test_validation.py::TestPhysiologicalBehavior -v
+pytest test/test_suite.py::TestPhysiologicalBehavior -v
 ```
 
-### 2. Gating Variables (`TestGatingVariables`)
+### 3. Gating Variables (`TestGatingVariables`)
 
 Tests for gating variable behavior:
 
@@ -123,43 +149,65 @@ Tests for gating variable behavior:
 
 **Run with:**
 ```bash
-pytest test/test_validation.py::TestGatingVariables -v
+pytest test/test_suite.py::TestGatingVariables -v
 ```
 
-### 3. Numerical Accuracy (`TestNumericalAccuracy`)
+### 4. RK4 Accuracy (`TestRK4Accuracy`)
+
+Comprehensive accuracy tests comparing CPU, GPU, and SciPy implementations:
+
+- `test_cpu_vs_scipy_single_neuron`: CPU RK4 vs SciPy reference
+- `test_gpu_vs_cpu_single_neuron`: GPU vs CPU single neuron
+- `test_gpu_vs_cpu_batch`: GPU vs CPU batch simulation
+- `test_all_three_implementations`: Three-way comparison
+- `test_scipy_reference_comparison`: Comprehensive SciPy validation
+
+**Run with:**
+```bash
+pytest test/test_suite.py::TestRK4Accuracy -v
+```
+
+### 5. Numerical Properties (`TestNumericalProperties`)
 
 Tests for numerical stability and accuracy:
 
 - `test_dt_convergence`: Results converge as dt decreases
+- `test_energy_conservation`: Resting state stability
+- `test_deterministic_behavior`: No randomness
+- `test_timestep_independence`: Timestep convergence
 - `test_integrator_consistency`: Different integrators agree
 - `test_no_nans_or_infs`: No numerical errors
 
 **Run with:**
 ```bash
-pytest test/test_validation.py::TestNumericalAccuracy -v
+pytest test/test_suite.py::TestNumericalProperties -v
 ```
 
-### 4. Batch Simulation (`TestBatchSimulation`)
+### 6. Batch Consistency (`TestBatchConsistency`)
 
 Tests for batch simulation correctness:
 
 - `test_batch_single_equivalence`: batch_size=1 equals single
 - `test_batch_independence`: Neurons are independent
+- `test_gpu_batch_matches_single`: GPU batch consistency
+- `test_cpu_gpu_batch_consistency`: CPU-GPU batch matching
 
 **Run with:**
 ```bash
-pytest test/test_validation.py::TestBatchSimulation -v
+pytest test/test_suite.py::TestBatchConsistency -v
 ```
 
-### 5. Reference Comparison (`TestAgainstSciPy`)
+### 7. Stimulus Generation (`TestStimulusGeneration`)
 
-Validation against scipy's ODE solver (requires scipy):
+Tests for stimulus generation utilities:
 
-- `test_scipy_reference_comparison`: Compare with scipy.integrate
+- `test_step_stimulus`: Step stimulus generation
+- `test_constant_stimulus`: Constant stimulus generation
+- `test_pulse_train_stimulus`: Pulse train generation
 
 **Run with:**
 ```bash
-pytest test/test_validation.py::TestAgainstSciPy -v
+pytest test/test_suite.py::TestStimulusGeneration -v
 ```
 
 ## Configuration
@@ -202,7 +250,7 @@ def test_example(cpu_simulator, step_stimulus):
 ```python
 import pytest
 import numpy as np
-from hh_optimized import HHModel, Simulator, Stimulus
+from cpu_backed import HHModel, Simulator, Stimulus
 
 class TestMyFeature:
     """Tests for my new feature."""
