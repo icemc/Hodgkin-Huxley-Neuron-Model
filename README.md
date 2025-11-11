@@ -255,72 +255,96 @@ result.plot()               # Create plots
 
 ## Testing & Validation
 
-A comprehensive test suite validates the implementation against known HH behavior using pytest.
+A comprehensive test suite validates the implementation with **28 tests** covering CPU, GPU, and SciPy implementations using pytest.
 
 ### Run All Tests
 ```bash
-# Run all tests
-pytest test/
+# Run the comprehensive test suite (28 tests)
+pytest test/test_suite.py -v
 
-# Run with verbose output
+# Run all tests in test directory
 pytest test/ -v
 
-# Run specific test categories
-pytest test/ -k "physiological"
-pytest test/ -k "numerical"
+# Run specific test groups
+pytest test/test_suite.py::TestBasicFunctionality -v
+pytest test/test_suite.py::TestRK4Accuracy -v
+pytest test/test_suite.py::TestPhysiologicalBehavior -v
 
 # Run with coverage report
 pytest test/ --cov=. --cov-report=html
 ```
 
-### Test Categories
+### Test Suite Organization (`test/test_suite.py`)
 
-#### 1. Physiological Behavior Tests
-- **Resting Potential**: Verifies neuron settles to ~-65 mV at rest
-- **Spike Threshold (Rheobase)**: Confirms threshold current is 4-7 µA/cm²
+The comprehensive test suite is organized into 5 sections with 28 tests:
+
+#### 1. **Basic Functionality Tests** (5 tests)
+- Module imports
+- Model and state creation
+- Stimulus generation
+- Single neuron simulation
+- Batch simulation
+
+#### 2. **Physiological Validation Tests** (6 tests)
+- **Resting Potential**: Verifies neuron settles to -65 to -70 mV
+- **Spike Threshold (Rheobase)**: Confirms threshold current is 3-8 µA/cm²
 - **Action Potential Amplitude**: Validates spike peaks reach 30-60 mV
-- **F-I Curve**: Tests monotonic increase in firing rate with current
+- **F-I Curve**: Tests monotonic firing rate increase with current
+- **Gating Variable Bounds**: Ensures m, h, n stay in [0, 1]
+- **Resting Gating Values**: Validates steady-state at rest
 
-#### 2. Gating Variables Tests
-- **Bounds Check**: Ensures m, h, n stay in [0, 1]
-- **Resting State Values**: Validates steady-state gating at rest
+#### 3. **Numerical Accuracy Tests - CPU vs GPU vs SciPy** (10 tests)
+- **CPU vs SciPy**: RK4 comparison with reference implementation (max error < 0.0001 mV)
+- **GPU vs CPU Single Neuron**: Validates GPU matches CPU (max error < 0.001 mV)
+- **GPU vs CPU Batch**: Batch simulation accuracy (max error < 0.1 mV)
+- **Three-way Comparison**: CPU, GPU, and SciPy consistency
+- **dt Convergence**: Results converge as timestep decreases
+- **Energy Conservation**: Resting state stability
+- **Deterministic Behavior**: No randomness in simulations
+- **Timestep Independence**: Convergence validation
+- **Integrator Consistency**: RK4 vs RK4-Rush-Larsen comparison
+- **Numerical Stability**: No NaN or Inf values
 
-#### 3. Numerical Accuracy Tests
-- **dt Convergence**: Confirms results converge as dt decreases
-- **Integrator Consistency**: Compares RK4 vs RK4-Rush-Larsen
-- **NaN/Inf Check**: Ensures no numerical errors
-
-#### 4. Batch Simulation Tests
+#### 4. **Batch Consistency Tests** (4 tests)
 - **Single-Batch Equivalence**: batch_size=1 matches single neuron
-- **Independence**: Verifies neurons in batch are independent
+- **Batch Independence**: Neurons with same stimulus produce identical results
+- **GPU Batch vs Single**: GPU batch matches individual simulations
+- **CPU-GPU Batch Consistency**: CPU and GPU batches match
 
-#### 5. Reference Comparison Tests
-- **SciPy Validation**: Compares against scipy.integrate (requires scipy)
+#### 5. **Stimulus Generation Tests** (3 tests)
+- Step stimulus validation
+- Constant stimulus validation
+- Pulse train stimulus validation
 
-### Example Output:
+### Test Results Summary
+
 ```bash
-$ pytest test/ -v
+$ pytest test/test_suite.py -v
 
-test/test_validation.py::TestPhysiologicalBehavior::test_resting_potential PASSED
-test/test_validation.py::TestPhysiologicalBehavior::test_spike_threshold PASSED
-test/test_validation.py::TestPhysiologicalBehavior::test_action_potential_amplitude PASSED
-test/test_validation.py::TestPhysiologicalBehavior::test_firing_rate_increases_with_current PASSED
-test/test_validation.py::TestGatingVariables::test_gating_variables_stay_in_bounds PASSED
-test/test_validation.py::TestNumericalAccuracy::test_dt_convergence PASSED
-test/test_validation.py::TestNumericalAccuracy::test_integrator_consistency PASSED
-test/test_validation.py::TestBatchSimulation::test_batch_single_equivalence PASSED
+28 passed in 112.45s (0:01:52) ✓
 
-===================== 8 passed in 12.34s =====================
+Accuracy achieved:
+  • CPU vs SciPy:  max error = 0.000118 mV
+  • GPU vs CPU:    max error = 0.000542 mV (single neuron)
+  • GPU vs CPU:    max error = 0.056 mV (batch of 10 neurons)
 ```
 
-## Future Extensions (GPU Backend)
+### Optional Dependencies
 
-The design supports GPU acceleration (Phase B):
-- CuPy for CUDA-accelerated arrays
-- JAX for XLA compilation and autodiff
-- Custom CUDA kernels for maximum performance
+Some tests require optional packages:
+- **SciPy**: For reference implementation comparison (`test_cpu_vs_scipy_*`)
+- **CuPy**: For GPU tests (`test_gpu_*`)
 
-These will be implemented in the `gpu_backend/` directory following the same API.
+Tests automatically skip if dependencies are unavailable.
+
+### Legacy Test Files
+
+Individual test files are also available:
+- `test/test_basic.py` - Basic functionality tests
+- `test/test_validation.py` - Physiological validation tests  
+- `test/test_accuracy.py` - GPU/CPU/SciPy accuracy tests
+
+**Recommended**: Use `test/test_suite.py` for comprehensive testing.
 
 ## License
 

@@ -6,7 +6,7 @@ using NumPy for efficient batch processing on CPUs.
 """
 
 import numpy as np
-from typing import Optional, Tuple, Dict, List
+from typing import Optional, Dict, List
 import sys
 import os
 

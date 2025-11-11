@@ -8,7 +8,7 @@ to simulate a single neuron with step current injection.
 import numpy as np
 import matplotlib.pyplot as plt
 
-from hh_optimized import HHModel, Simulator, Stimulus
+from cpu_backed import HHModel, Simulator, Stimulus
 
 
 def basic_demo():
@@ -105,8 +105,8 @@ def basic_demo():
     axes[0].legend()
     axes[0].set_title('Membrane Potential and Gating Variables')
 
-    plt.savefig('plots/hh_simulation_basic.png', dpi=150, bbox_inches='tight')
-    print("Plot saved as: hh_simulation_basic.png")
+    plt.savefig('plots/cpu_single_neuron_demo.png', dpi=150, bbox_inches='tight')
+    print("Plot saved as: cpu_single_neuron_demo.png")
     print()
     
     # Show voltage trace details
@@ -180,8 +180,8 @@ def batch_simulation_demo():
     ax.grid(True, alpha=0.3)
     ax.legend()
 
-    plt.savefig('plots/hh_simulation_batch.png', dpi=150, bbox_inches='tight')
-    print("Plot saved as: hh_simulation_batch.png")
+    plt.savefig('plots/cpu_batch_simulation_demo.png', dpi=150, bbox_inches='tight')
+    print("Plot saved as: cpu_batch_simulation_demo.png")
     print()
     
     print("Batch demo complete!")

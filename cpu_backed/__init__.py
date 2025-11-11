@@ -2,14 +2,13 @@
 CPU Backend - Optimized CPU implementations for HH simulations.
 """
 
-from .vectorized import (
-    VectorizedSimulator,
-    OptimizedRK4Integrator,
-    BatchSimulator
-)
+from .cpu_simulator import Simulator, HHModel, Stimulus, SimulationResult
+from .vectorized import VectorizedSimulator
 
 __all__ = [
-    'VectorizedSimulator',
-    'OptimizedRK4Integrator',
-    'BatchSimulator'
+    'Simulator',
+    'HHModel',
+    'Stimulus',
+    'SimulationResult',
+    'VectorizedSimulator'
 ]

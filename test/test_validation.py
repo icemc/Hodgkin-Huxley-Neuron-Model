@@ -14,7 +14,7 @@ try:
 except ImportError:
     SCIPY_AVAILABLE = False
 
-from hh_optimized import HHModel, Simulator, Stimulus
+from cpu_backed import HHModel, Simulator, Stimulus
 from hh_core.models import HHParameters, HHState, derivatives
 
 

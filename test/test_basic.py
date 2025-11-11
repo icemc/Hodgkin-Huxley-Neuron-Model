@@ -13,8 +13,7 @@ def test_imports():
     """Test that all modules can be imported."""
     from hh_core import HHParameters, HHState, RK4, ForwardEuler
     from hh_core.utils import Stimulus
-    from cpu_backed import VectorizedSimulator
-    from hh_optimized import HHModel, Simulator
+    from cpu_backed import VectorizedSimulator, Simulator, HHModel
     
     # If we get here, all imports succeeded
     assert True
@@ -22,7 +21,7 @@ def test_imports():
 
 def test_model_creation():
     """Test model and state creation."""
-    from hh_optimized import HHModel
+    from cpu_backed import HHModel
     
     model = HHModel()
     params = model.get_params()
@@ -38,7 +37,7 @@ def test_model_creation():
 
 def test_stimulus_generation():
     """Test stimulus generation."""
-    from hh_optimized import Stimulus
+    from cpu_backed import Stimulus
     
     # Test step stimulus
     stim = Stimulus.step(10.0, 10.0, 40.0, 100.0, 0.01)
@@ -53,7 +52,7 @@ def test_stimulus_generation():
 
 def test_basic_simulation():
     """Test basic single neuron simulation."""
-    from hh_optimized import HHModel, Simulator, Stimulus
+    from cpu_backed import HHModel, Simulator, Stimulus
     
     model = HHModel()
     simulator = Simulator(model=model, backend='cpu', integrator='rk4')
@@ -78,7 +77,7 @@ def test_basic_simulation():
 
 def test_batch_simulation():
     """Test batch simulation."""
-    from hh_optimized import HHModel, Simulator, Stimulus
+    from cpu_backed import HHModel, Simulator, Stimulus
     
     model = HHModel()
     simulator = Simulator(model=model, backend='cpu', integrator='rk4')
@@ -102,7 +101,7 @@ def test_batch_simulation():
 @pytest.mark.parametrize("integrator", ['euler', 'rk4', 'rk4rl'])
 def test_different_integrators(integrator):
     """Test different integrator types."""
-    from hh_optimized import HHModel, Simulator, Stimulus
+    from cpu_backed import HHModel, Simulator, Stimulus
     
     model = HHModel()
     stimulus = Stimulus.step(10.0, 10.0, 40.0, 50.0, 0.01)

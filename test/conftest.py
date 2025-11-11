@@ -4,7 +4,7 @@ Pytest fixtures and configuration for HH tests.
 
 import pytest
 import numpy as np
-from hh_optimized import HHModel, Simulator, Stimulus
+from cpu_backed import HHModel, Simulator, Stimulus
 
 
 @pytest.fixture
@@ -53,4 +53,10 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers", "slow: mark test as slow running"
+    )
+    config.addinivalue_line(
+        "markers", "gpu: mark test as requiring GPU/CuPy"
+    )
+    config.addinivalue_line(
+        "markers", "accuracy: mark test as checking numerical accuracy"
     )
