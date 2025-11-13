@@ -17,7 +17,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from hh_manual import HHManual
-from hh_optimized import HHModel, Simulator, Stimulus
+from hh_core import HHModel, Stimulus
+from cpu_backed import CPUSimulator as Simulator
 
 
 def run_manual(method, repeats, T, dt, stim = None):
@@ -39,7 +40,7 @@ def run_manual(method, repeats, T, dt, stim = None):
 
 def run_basic(method, repeats, T, dt):
     model = HHModel()
-    simulator = Simulator(model=model, backend='cpu', integrator=method)
+    simulator = Simulator(model=model, integrator=method)
     stim = Stimulus.step(10.0, 10.0, 40.0, T, dt)
 
     # warm-up
