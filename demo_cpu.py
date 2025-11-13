@@ -1,14 +1,15 @@
 """
 Example: Basic Hodgkin-Huxley simulation
 
-This script demonstrates how to use the CPU-backed HH implementation
-to simulate a single neuron with step current injection.
+This script demonstrates how to use the unified HH simulator
+to simulate neurons with step current injection using the CPU backend.
 """
 
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-from hh_optimized import HHModel, Simulator, Stimulus
+from simulator import Simulator, HHModel, Stimulus
 
 
 def basic_demo():
@@ -56,8 +57,8 @@ def basic_demo():
     # Create simulator with CPU backend and RK4 integrator
     print("Creating simulator (CPU backend, RK4 integrator)...")
     simulator = Simulator(
-        model=model,
         backend='cpu',
+        model=model,
         integrator='rk4',
         dtype=np.float64
     )
@@ -97,16 +98,21 @@ def basic_demo():
     
     # Plot results
     print("Generating plots...")
+    # ensure plots dir
+    os.makedirs('plots', exist_ok=True)
+
     fig, axes = result.plot(variables=['V', 'm', 'h', 'n'], figsize=(12, 10))
-    
+
     # Add stimulus to voltage plot (pad stimulus to match time array length)
-    stimulus_padded = np.pad(stimulus, (0, 1), mode='edge')
+    n_time = len(result.time)
+    pad_len = max(0, n_time - len(stimulus))
+    stimulus_padded = np.pad(stimulus, (0, pad_len), mode='edge')
     axes[0].plot(result.time, stimulus_padded * 5 - 80, 'r--', alpha=0.5, label='Stimulus (scaled)')
     axes[0].legend()
     axes[0].set_title('Membrane Potential and Gating Variables')
 
-    plt.savefig('plots/hh_simulation_basic.png', dpi=150, bbox_inches='tight')
-    print("Plot saved as: hh_simulation_basic.png")
+    plt.savefig('plots/cpu_single_neuron_demo.png', dpi=150, bbox_inches='tight')
+    print("Plot saved as: cpu_single_neuron_demo.png")
     print()
     
     # Show voltage trace details
@@ -180,9 +186,10 @@ def batch_simulation_demo():
     ax.grid(True, alpha=0.3)
     ax.legend()
 
-    plt.savefig('plots/hh_simulation_batch.png', dpi=150, bbox_inches='tight')
-    print("Plot saved as: hh_simulation_batch.png")
+    plt.savefig('plots/cpu_batch_simulation_demo.png', dpi=150, bbox_inches='tight')
+    print("Plot saved as: cpu_batch_simulation_demo.png")
     print()
+ 
     # Plot 3D phase space n (x), m (y), h (z) for each neuron
     print("Plotting 3D phase space (n vs m vs h) for each neuron...")
     # local import to avoid modifying top-level imports for scripts that don't need 3D

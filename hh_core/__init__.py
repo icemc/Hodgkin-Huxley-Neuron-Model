@@ -32,6 +32,12 @@ from .utils import (
     create_batched_stimulus
 )
 
+from .api import (
+    HHModel,
+    SimulationResult,
+    BaseSimulator,
+)
+
 __all__ = [
     # Models
     'HHParameters',
@@ -59,4 +65,9 @@ __all__ = [
     'compute_spike_statistics',
     'compute_firing_rate',
     'create_batched_stimulus'
+    
+    # API
+    'HHModel',
+    'SimulationResult',
+    'BaseSimulator',
 ]

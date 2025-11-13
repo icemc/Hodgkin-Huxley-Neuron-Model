@@ -1,12 +1,14 @@
-# Optimized Hodgkin-Huxley Implementation (Python) - CPU Backend
+# Optimized Hodgkin-Huxley Implementation (Python)
 
-This is the CPU-optimized implementation of the Hodgkin-Huxley neuron model in Python, as described in the design document.
+High-performance CPU and GPU implementations of the Hodgkin-Huxley neuron model in Python.
 
 ## Overview
 
 This implementation provides:
-- **High-performance vectorized NumPy** implementation for batch simulations
-- **Multiple integration methods**: Forward Euler, RK4, and RK4 with Rush-Larsen
+- **GPU acceleration**: Custom CUDA kernels with up to 22.64x speedup for batch simulations ([see benchmarks](#benchmarks))
+- **High-performance vectorized NumPy** for CPU batch simulations
+- **Multiple integration methods**: Forward Euler, RK4, RK4 with Rush-Larsen, and RK4-Scipy
+- **Optimized hand-written RK4**: 2.48x faster than SciPy's RK45 ([see benchmarks](#rk4-vs-scipy-integrator-performance))
 - **Flexible stimulus generation**: step, pulse train, ramp, noisy currents
 - **Spike detection** with interpolation for precise timing
 - **Clean, modular API** for easy use
@@ -18,22 +20,24 @@ project/
 ├── .github/                   # GitHub workflows and CI configuration
 ├── hh_core/                   # Core HH equations and integrators
 │   ├── __init__.py
+│   ├── api.py                 # SimulationResult, Stimulus, HHModel
 │   ├── models.py              # HH equations, parameters, gating kinetics
 │   ├── integrators.py         # RK4, Euler, Rush-Larsen integrators
 │   └── utils.py               # Stimulus generation, spike detection
 ├── cpu_backed/                # CPU-optimized implementations
 │   ├── __init__.py
+│   ├── cpu_simulator.py       # Wrapper around Vectorized simulator
 │   └── vectorized.py          # NumPy vectorized simulator
+├── gpu_backed/                # GPU-optimized implementations
+│   ├── __init__.py
+│   └── gpu_simulator.py       # CuPy GPU simulator
 ├── test/                      # Pytest test suite
 │   ├── __init__.py
 │   ├── conftest.py            # Pytest fixtures and configuration
-│   ├── test_basic.py          # Basic functionality tests
-│   └── test_validation.py    # Comprehensive validation tests
-├── docs/                      # Additional documentation
+│   └── test_suite.py          # Comprehensive test suite (34 tests)
 ├── plots/                     # Generated plots from demos and tests
-├── hh_optimized.py            # High-level API (HHModel, Simulator, Stimulus)
-├── demo_basic.py              # Example usage script
-├── validate.py                # Validation script wrapper
+├── demo_cpu.py              # Example usage script with cpu simulator
+├── demo_gpu.py                # Example usage script with gpu simulator
 ├── pytest.ini                 # Pytest configuration
 ├── requirements.txt           # Python dependencies
 ├── TESTING.md                 # Testing documentation
@@ -54,7 +58,7 @@ pip install -r requirements.txt
 
 ```python
 import numpy as np
-from hh_optimized import HHModel, Simulator, Stimulus
+from simulator import HHModel, Simulator, Stimulus
 
 # Create model with default parameters
 model = HHModel()
@@ -68,7 +72,7 @@ stimulus = Stimulus.step(
     t_start=10.0,     # ms
     t_end=40.0,       # ms
     duration=100.0,   # ms
-    dt=0.01          # ms
+    dt=0.01           # ms
 )
 
 # Run simulation
@@ -103,6 +107,125 @@ result = simulator.run(
 print(result.V.shape)
 ```
 
+## GPU Acceleration
+
+This project includes a **GPU-accelerated implementation** using custom CUDA kernels via CuPy. The GPU simulator provides up to **22x speedup** depending on batch size.
+
+### Why GPU?
+
+While Hodgkin-Huxley equations are **sequential in time** (each step depends on the previous), they are **parallel across neurons**. The GPU implementation exploits this spatial parallelism:
+
+- **CPU:** Simulates neurons sequentially (even with vectorization)
+- **GPU:** Each CUDA thread independently simulates one neuron
+
+### Architecture & Implementation
+
+**Custom CUDA Kernel Approach:**
+
+The implementation uses a custom CUDA kernel that:
+1. **Mirrors CPU RK4 logic exactly** - Same alpha/beta functions, same derivative calculations
+2. **Thread parallelism** - Each thread (neuron) is independent
+3. **SIMD execution** - All threads execute the same instructions on different data
+4. **Efficient memory layout** - Structure-of-Arrays for coalesced memory access
+
+```
+Grid: [num_blocks]
+  ├─ Block 0: [256 threads] → Neurons 0-255
+  ├─ Block 1: [256 threads] → Neurons 256-511
+  └─ Block N: [remaining threads] → Remaining neurons
+
+Each thread runs: RK4(neuron_id) for all time steps
+```
+
+**Key Design Decisions:**
+- **Code Reuse:** CUDA kernel implements the exact same HH equations and RK4 integration as CPU
+- **Memory Efficiency:** Structure-of-Arrays layout (`[V1, V2, V3, ...]`) for coalesced access
+- **Minimal Transfers:** Stimulus transferred once; all state stays on GPU; results transferred at end
+- **Float32 Precision:** Uses single precision (sufficient for HH dynamics, faster on GPU)
+
+### Performance Comparison
+
+Our GPU implementation achieves up to **22.64x speedup** for large batch simulations compared to vectorized CPU code. See detailed benchmark results in the [Benchmarks](#benchmarks) section.
+
+**Quick Summary:**
+- GPU wins for **all batch sizes** (even single neuron: 2.36x faster)
+- Speedup scales with batch size (1 neuron: 2.36x → 10,000 neurons: 22.64x)
+- GPU time stays nearly constant while CPU time scales linearly
+- Optimal for large-scale network simulations (1,000+ neurons)
+
+For complete performance data and methodology, see [CPU vs GPU Benchmark](#cpu-vs-gpu-performance).
+
+### Advantages & Limitations
+
+**Advantages:**
+- **Exact same mathematics** as CPU implementation
+- **Massive parallelism** - simulate 10,000+ neurons simultaneously
+- **Scales efficiently** - GPU time nearly constant with batch size
+- **Clean API** - Same interface as CPU simulator
+- **Beneficial for all batch sizes** - even single neuron sees speedup
+
+**Limitations:**
+- **Float32 only** - Currently uses single precision (sufficient for HH)
+- **Requires CUDA GPU** - NVIDIA GPU with CUDA support needed
+- **CuPy dependency** - Must install `cupy-cuda11x` or `cupy-cuda12x`
+- **RK4 integrator only** - Only RK4 integration method supported on GPU
+- **Sequential in time** - Still advances through time steps one by one
+
+### GPU Usage Example
+
+```python
+from simulator import Simulator
+from hh_core import Stimulus
+
+# Create GPU simulator (automatically uses float32)
+simulator = Simulator(backend='gpu', dtype=np.float32)
+
+# Create stimulus
+stim = Stimulus.constant(amplitude=10.0, duration=100.0, dt=0.01)
+
+# Run simulation (10,000 neurons in parallel)
+result = simulator.run(
+    T=100.0,
+    dt=0.01,
+    batch_size=10000,
+    stimulus=stim.current,
+    record_vars=['V', 'm', 'h', 'n'],
+    spike_threshold=0.0
+)
+
+# Access results (same API as CPU)
+print(f"Simulated {result.batch_size} neurons")
+print(f"Detected {result.spikes['spike_count'][0]} spikes")
+result.plot()  # Plot results
+```
+
+### Requirements
+
+GPU simulation requires:
+- **NVIDIA GPU** with CUDA support
+- **CuPy** (`pip install cupy-cuda12x` or appropriate version)
+
+If CuPy is not installed, the simulator automatically falls back to CPU.
+
+**See Also:**
+- [GPU Usage Example](#gpu-example) - Demo script with visualization
+- [CPU vs GPU Benchmark](#cpu-vs-gpu-performance) - Comprehensive performance comparison
+- [GPU vs CPU Comparison Table](#cpu-vs-gpu-comparison) - Feature comparison
+
+### CPU vs GPU Comparison
+
+| Aspect | CPU (NumPy) | GPU (CUDA Kernel) |
+|--------|-------------|-------------------|
+| **Parallelism** | Vectorization (SIMD) | Thread parallelism (SIMT) |
+| **Max Neurons** | ~1000 practical | 10,000+ efficient |
+| **Overhead** | Low | Moderate (kernel launch) |
+| **Memory** | System RAM | GPU VRAM (8-24 GB) |
+| **Precision** | float32/float64 | float32 |
+| **Integrators** | euler, rk4, rk4rl, rk4-scipy | rk4 only |
+| **Best For** | Small-medium batches | Large batches |
+
+**Key Insight:** The GPU parallelizes across neurons (spatial), not time (temporal).
+
 ## Features
 
 ### Model Parameters
@@ -130,19 +253,27 @@ model.set_params(g_Na=100.0, E_K=-80.0)
    - May require smaller dt
 
 2. **RK4** (`integrator='rk4'`) - **Recommended**
-   - Fourth-order Runge-Kutta
+   - Fourth-order Runge-Kutta (hand-written)
    - Excellent accuracy/performance tradeoff
    - Standard choice for HH simulations
+   - **2.48x faster than SciPy's RK45** (see [Integrator Benchmark](#rk4-vs-scipy-integrator-performance))
+
 
 3. **RK4 with Rush-Larsen** (`integrator='rk4rl'`)
    - RK4 for voltage, Rush-Larsen for gating variables
    - More stable, can use larger dt
    - Good for stiff systems
 
+4. **RK4-Scipy** (`integrator='rk4-scipy'`)
+   - Uses scipy's RK45 (Dormand-Prince) integrator
+   - Adaptive step-size (forced to fixed steps here)
+   - Useful for validation and comparison
+   - Requires: `pip install scipy`
+
 ### Stimulus Types
 
 ```python
-from hh_optimized import Stimulus
+from simulator import Stimulus
 
 # Constant current
 stim = Stimulus.constant(amplitude=10.0, duration=100.0, dt=0.01)
@@ -178,6 +309,116 @@ count = result.get_spike_count()
 spike_times = result.get_spike_times()
 ```
 
+## API Reference
+
+### HHModel
+
+```python
+model = HHModel(params=None)  # Create with optional custom parameters
+model.set_params(g_Na=100.0)  # Update parameters
+params = model.get_params()    # Get HHParameters object
+state = model.resting_state(batch_size=1)  # Get resting state
+```
+
+### Unified Simulator (Factory Function)
+
+```python
+from simulator import Simulator
+
+# CPU backend
+simulator = Simulator(
+    model=None,           # HHModel (default if None)
+    backend='cpu',        # 'cpu' or 'gpu'
+    integrator='rk4',     # 'euler', 'rk4', 'rk4rl', 'rk4-scipy'
+    dtype=np.float64      # np.float32 or np.float64
+)
+
+# GPU backend
+simulator = Simulator(
+    model=None,           # HHModel (default if None)
+    backend='gpu',        # GPU requires CuPy
+    integrator='rk4',     # Only 'rk4' supported on GPU
+    dtype='float32'       # GPU uses float32
+)
+
+result = simulator.run(
+    T,                    # Total time (ms)
+    dt=0.01,             # Time step (ms)
+    state0=None,         # Initial state (resting if None)
+    stimulus=None,       # Current array
+    batch_size=1,        # Number of neurons
+    record=['V','m','h','n'],  # Variables to record
+    spike_threshold=0.0  # Spike detection threshold (mV)
+)
+```
+
+### CPUSimulator (Direct Use)
+
+```python
+from cpu_backed import CPUSimulator
+
+simulator = CPUSimulator(
+    model=None,           # HHModel (default if None)
+    integrator='rk4',     # 'euler', 'rk4', 'rk4rl', 'rk4-scipy'
+    dtype=np.float64      # np.float32 or np.float64
+)
+
+result = simulator.run(
+    T,                    # Total time (ms)
+    dt=0.01,             # Time step (ms)
+    state0=None,         # Initial state (resting if None)
+    stimulus=None,       # Current array
+    batch_size=1,        # Number of neurons
+    record=['V','m','h','n'],  # Variables to record
+    spike_threshold=0.0  # Spike detection threshold (mV)
+)
+```
+
+**Supported Integrators (CPU only):**
+- `'euler'` - Forward Euler (fast, less accurate)
+- `'rk4'` - 4th-order Runge-Kutta (recommended, good balance)
+- `'rk4rl'` - RK4 with Rush-Larsen (better for stiff systems)
+- `'rk4-scipy'` - SciPy's RK45 (adaptive, slower)
+
+### GPUSimulator (Direct Use)
+
+```python
+from gpu_backed import GPUSimulator
+
+simulator = GPUSimulator(
+    model=None,           # HHModel (default if None)
+    integrator='rk4',     # Only 'rk4' is supported
+    dtype='float32'       # GPU uses float32
+)
+
+result = simulator.run(
+    T,                    # Total time (ms)
+    dt=0.01,             # Time step (ms)
+    state0=None,         # Initial state (resting if None)
+    stimulus=None,       # Current array
+    batch_size=1,        # Number of neurons
+    record=['V','m','h','n'],  # Variables to record
+    spike_threshold=0.0  # Spike detection threshold (mV)
+)
+```
+
+**Note:** GPU simulator requires CuPy and CUDA. Only RK4 integrator is supported. Raises `ValueError` if a different integrator is specified.
+```
+
+### SimulationResult
+
+```python
+result.time            # Time array
+result.V               # Voltage trace
+result.m, result.h, result.n  # Gating variables
+result.spikes          # Spike detection results
+
+result.get_spike_count()    # Number of spikes
+result.get_spike_times()    # Spike times
+result.summary()            # Text summary
+result.plot()               # Create plots
+```
+
 ## Performance Tips
 
 1. **Choose proper dt:**
@@ -197,131 +438,191 @@ spike_times = result.get_spike_times()
 
 ## Examples
 
-Run the included demo:
+Run the included demos:
+
+### CPU example
 
 ```bash
-python demo_basic.py
+python demo_cpu.py
 ```
 
-This will generate three plots:
-- `hh_simulation_basic.png` - Single neuron simulation
-- `hh_simulation_batch.png` - Batch simulation with 5 neurons
-- `hh_simulation_phase_nmh.png` - 3D phase space (n vs m vs h) for each neuron
+This will generate two plots:
+- `cpu_single_neuron_demo.png` - Single neuron simulation
+- `cpu_batch_simulation_demo.png` - Batch simulation with 5 neurons
 
-## API Reference
 
-### HHModel
+### GPU example
 
-```python
-model = HHModel(params=None)  # Create with optional custom parameters
-model.set_params(g_Na=100.0)  # Update parameters
-params = model.get_params()    # Get HHParameters object
-state = model.resting_state(batch_size=1)  # Get resting state
+```bash
+python demo_gpu.py
 ```
 
-### Simulator
+This will generate two plots:
+- `gpu_single_neuron_demo.png` - Single neuron simulation
+- `gpu_batch_simulation_demo.png` - Batch simulation with 5 neurons
 
-```python
-simulator = Simulator(
-    model=None,           # HHModel (default if None)
-    backend='cpu',        # Only 'cpu' backend supported
-    integrator='rk4',     # 'euler', 'rk4', or 'rk4rl'
-    dtype=np.float64      # np.float32 or np.float64
-)
+## Benchmarks
 
-result = simulator.run(
-    T,                    # Total time (ms)
-    dt=0.01,             # Time step (ms)
-    state0=None,         # Initial state (resting if None)
-    stimulus=None,       # Current array
-    batch_size=1,        # Number of neurons
-    record=['V','m','h','n'],  # Variables to record
-    spike_threshold=0.0  # Spike detection threshold (mV)
-)
+This section contains comprehensive performance benchmarks comparing different implementations and integrators.
+
+### CPU vs GPU Performance
+
+**Benchmark comparing vectorized CPU (NumPy) vs GPU (CUDA) implementations across different batch sizes.**
+
+Test configuration: 50ms simulation, dt=0.01ms, 5000 steps, 5 runs per test, RTX 3070 Ti Laptop GPU
+
+| Batch Size | CPU Time | GPU Time | Speedup |
+|-----------|----------|----------|---------|
+| 1 neuron | 0.76s | 0.32s | **2.36x** |
+| 10 neurons | 1.33s | 0.26s | **5.04x** |
+| 50 neurons | 1.35s | 0.26s | **5.29x** |
+| 100 neurons | 1.51s | 0.22s | **6.94x** |
+| 500 neurons | 2.30s | 0.22s | **10.56x** |
+| 1,000 neurons | 3.59s | 0.27s | **13.12x** |
+| 5,000 neurons | 12.28s | 0.68s | **18.03x** |
+| 10,000 neurons | 26.11s | 1.15s | **22.64x** |
+
+**Key Findings:**
+- GPU achieves up to **22.64x speedup** at 10,000 neurons
+- GPU time stays relatively constant (~0.2-0.3s) for small-medium batches
+- CPU time scales linearly with batch size
+- GPU beneficial for all batch sizes (no crossover point)
+
+**Run the benchmark:**
+```bash
+python benchmark_cpu_vs_gpu.py
 ```
 
-### SimulationResult
+Generated plot: `plots/cpu_vs_gpu_benchmark.png`
 
-```python
-result.time            # Time array
-result.V               # Voltage trace
-result.m, result.h, result.n  # Gating variables
-result.spikes          # Spike detection results
+### RK4 vs SciPy Integrator Performance
 
-result.get_spike_count()    # Number of spikes
-result.get_spike_times()    # Spike times
-result.summary()            # Text summary
-result.plot()               # Create plots
+**Benchmark comparing hand-written RK4 vs SciPy's RK45 integrator.**
+
+Test configuration: 50ms simulation, dt=0.01ms, 5000 steps, 5 runs per test
+
+| Batch Size | RK4 (Hand-written) | RK4-Scipy | Speedup |
+|-----------|-------------------|-----------|---------|
+| 1 neuron | 0.92s | 2.15s | **2.33x** |
+| 10 neurons | 1.61s | 3.47s | **2.15x** |
+| 50 neurons | 1.67s | 3.61s | **2.16x** |
+| 100 neurons | 1.83s | 3.90s | **2.14x** |
+| 500 neurons | 2.79s | 6.15s | **2.20x** |
+| 1,000 neurons | 4.18s | 9.51s | **2.27x** |
+| 5,000 neurons | 15.38s | 43.10s | **2.80x** |
+| 10,000 neurons | 28.61s | 69.28s | **2.42x** |
+
+**Overall: Hand-written RK4 is 2.48x faster** (57.0s vs 141.2s total)
+
+**Why is Hand-Written RK4 Faster?**
+
+1. **Specialized for Fixed Step Size** - No adaptive stepping overhead
+2. **Vectorized NumPy Operations** - Efficient BLAS/LAPACK usage
+3. **Reduced Function Call Overhead** - Direct inline computations
+4. **Memory Layout Optimization** - Cache-friendly access patterns
+5. **HH-Specific Optimizations** - Tailored for Hodgkin-Huxley equations
+
+**Key Insight:** A specialized implementation optimized for fixed-step HH simulations outperforms general-purpose adaptive ODE solvers. SciPy's RK45 excels at general ODEs with unknown behavior, but our hand-written RK4 is tailored specifically for HH dynamics.
+
+**Run the benchmark:**
+```bash
+python benchmark_integrators.py
 ```
+
+Generated plot: `plots/integrator_benchmark.png`
 
 ## Testing & Validation
 
-A comprehensive test suite validates the implementation against known HH behavior using pytest.
+A comprehensive test suite validates the implementation with **34 tests** covering CPU, GPU, and SciPy implementations using pytest.
 
 ### Run All Tests
 ```bash
-# Run all tests
-pytest test/
+# Run the comprehensive test suite (34 tests)
+pytest test/test_suite.py -v
 
-# Run with verbose output
+# Run all tests in test directory
 pytest test/ -v
 
-# Run specific test categories
-pytest test/ -k "physiological"
-pytest test/ -k "numerical"
+# Run specific test groups
+pytest test/test_suite.py::TestBasicFunctionality -v
+pytest test/test_suite.py::TestRK4Accuracy -v
+pytest test/test_suite.py::TestPhysiologicalBehavior -v
 
 # Run with coverage report
 pytest test/ --cov=. --cov-report=html
 ```
 
-### Test Categories
+### Test Suite Organization (`test/test_suite.py`)
 
-#### 1. Physiological Behavior Tests
-- **Resting Potential**: Verifies neuron settles to ~-65 mV at rest
-- **Spike Threshold (Rheobase)**: Confirms threshold current is 4-7 µA/cm²
+The comprehensive test suite is organized into 7 sections with 34 tests:
+
+#### 1. **Basic Functionality Tests** (10 tests)
+- Module imports
+- Model and state creation
+- Stimulus generation
+- Single neuron simulation
+- Batch simulation
+- Different integrators (euler, rk4, rk4rl, rk4-scipy) - 4 parameterized tests
+- RK4 vs RK4-Scipy comparison
+
+#### 2. **Physiological Validation Tests** (6 tests)
+- **Resting Potential**: Verifies neuron settles to -65 to -70 mV
+- **Spike Threshold (Rheobase)**: Confirms threshold current is 3-8 µA/cm²
 - **Action Potential Amplitude**: Validates spike peaks reach 30-60 mV
-- **F-I Curve**: Tests monotonic increase in firing rate with current
+- **F-I Curve**: Tests monotonic firing rate increase with current
+- **Gating Variable Bounds**: Ensures m, h, n stay in [0, 1]
+- **Resting Gating Values**: Validates steady-state at rest
 
-#### 2. Gating Variables Tests
-- **Bounds Check**: Ensures m, h, n stay in [0, 1]
-- **Resting State Values**: Validates steady-state gating at rest
+#### 3. **RK4 Accuracy Tests - CPU vs GPU vs SciPy** (5 tests)
+- **CPU vs SciPy**: RK4 comparison with reference implementation (max error < 0.0001 mV)
+- **GPU vs CPU Single Neuron**: Validates GPU matches CPU (max error < 0.001 mV)
+- **GPU vs CPU Batch**: Batch simulation accuracy (max error < 0.1 mV)
+- **Three-way Comparison**: CPU, GPU, and SciPy consistency
+- **SciPy Reference Comparison**: Comprehensive RMSE validation (< 2 mV)
 
-#### 3. Numerical Accuracy Tests
-- **dt Convergence**: Confirms results converge as dt decreases
-- **Integrator Consistency**: Compares RK4 vs RK4-Rush-Larsen
-- **NaN/Inf Check**: Ensures no numerical errors
+#### 4. **Numerical Properties Tests** (6 tests)
+- **dt Convergence**: Results converge as timestep decreases
+- **Energy Conservation**: Resting state stability
+- **Deterministic Behavior**: No randomness in simulations
+- **Timestep Independence**: Convergence validation
+- **Integrator Consistency**: RK4 vs RK4-Rush-Larsen comparison
+- **Numerical Stability**: No NaN or Inf values
 
-#### 4. Batch Simulation Tests
+#### 5. **Batch Consistency Tests** (4 tests)
 - **Single-Batch Equivalence**: batch_size=1 matches single neuron
-- **Independence**: Verifies neurons in batch are independent
+- **Batch Independence**: Neurons with same stimulus produce identical results
+- **GPU Batch vs Single**: GPU batch matches individual simulations
+- **CPU-GPU Batch Consistency**: CPU and GPU batches match
 
-#### 5. Reference Comparison Tests
-- **SciPy Validation**: Compares against scipy.integrate (requires scipy)
+#### 6. **Stimulus Generation Tests** (3 tests)
+- Step stimulus validation
+- Constant stimulus validation
+- Pulse train stimulus validation
 
-### Example Output:
+### Test Results Summary
+
 ```bash
-$ pytest test/ -v
+$ pytest test/test_suite.py -v
 
-test/test_validation.py::TestPhysiologicalBehavior::test_resting_potential PASSED
-test/test_validation.py::TestPhysiologicalBehavior::test_spike_threshold PASSED
-test/test_validation.py::TestPhysiologicalBehavior::test_action_potential_amplitude PASSED
-test/test_validation.py::TestPhysiologicalBehavior::test_firing_rate_increases_with_current PASSED
-test/test_validation.py::TestGatingVariables::test_gating_variables_stay_in_bounds PASSED
-test/test_validation.py::TestNumericalAccuracy::test_dt_convergence PASSED
-test/test_validation.py::TestNumericalAccuracy::test_integrator_consistency PASSED
-test/test_validation.py::TestBatchSimulation::test_batch_single_equivalence PASSED
+32 passed in 120.08s (0:02:00) ✓
 
-===================== 8 passed in 12.34s =====================
+Accuracy achieved:
+  • CPU vs SciPy:  max error = 0.000118 mV
+  • GPU vs CPU:    max error = 0.000542 mV (single neuron)
+  • GPU vs CPU:    max error = 0.056 mV (batch of 10 neurons)
 ```
 
-## Future Extensions (GPU Backend)
+### Optional Dependencies
 
-The design supports GPU acceleration (Phase B):
-- CuPy for CUDA-accelerated arrays
-- JAX for XLA compilation and autodiff
-- Custom CUDA kernels for maximum performance
+Some tests require optional packages:
+- **SciPy**: For reference implementation comparison (`test_cpu_vs_scipy_*`)
+- **CuPy**: For GPU tests (`test_gpu_*`)
 
-These will be implemented in the `gpu_backend/` directory following the same API.
+Tests automatically skip if dependencies are unavailable.
+
+### Detailed Testing Documentation
+
+For more detailed information about writing tests, test fixtures, and CI/CD integration, see [TESTING.md](TESTING.md).
 
 ## License
 

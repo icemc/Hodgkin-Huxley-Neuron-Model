@@ -1,17 +1,16 @@
 """
 High-level API for Hodgkin-Huxley simulations.
 
-This module provides user-friendly classes for running HH simulations
-with CPU-optimized vectorized backend.
+This module provides user-friendly classes for running HH simulations.
 """
 
 import numpy as np
 from typing import Optional, Union, List, Dict
 import warnings
+from abc import ABC, abstractmethod
 
-from hh_core.models import HHParameters, HHState
-from hh_core.utils import Stimulus as StimGen
-from cpu_backed.vectorized import VectorizedSimulator
+from .models import HHParameters, HHState
+from .utils import Stimulus as StimGen
 
 
 class HHModel:
@@ -99,16 +98,15 @@ class Stimulus:
         return StimGen.ramp(start_amplitude, end_amplitude, duration, dt)
 
 
-class Simulator:
+class BaseSimulator(ABC):
     """
-    Main simulator class for HH neurons.
+    Abstract base class for Hodgkin-Huxley simulators.
     
-    Uses vectorized NumPy implementation optimized for batch simulations.
+    Defines the interface that all simulator backends (CPU, GPU) must implement.
     """
     
     def __init__(self, 
                  model: Optional[HHModel] = None,
-                 backend: str = 'cpu',
                  integrator: str = 'rk4',
                  dtype=np.float64):
         """
@@ -116,23 +114,14 @@ class Simulator:
         
         Args:
             model: HH model (creates default if None)
-            backend: 'cpu' (only supported backend)
-            integrator: 'euler', 'rk4', or 'rk4rl' (RK4 with Rush-Larsen)
+            integrator: Integration method ('euler', 'rk4', 'rk4rl', 'rk4-scipy')
             dtype: Data type for arrays (np.float32 or np.float64)
         """
         self.model = model if model is not None else HHModel()
-        self.backend = backend
         self.integrator = integrator
         self.dtype = dtype
-        
-        # Create backend simulator
-        if backend == 'cpu':
-            self.sim = VectorizedSimulator(
-                self.model.params, integrator, dtype
-            )
-        else:
-            raise ValueError(f"Unknown backend: {backend}. Only 'cpu' backend is supported.")
     
+    @abstractmethod
     def run(self,
             T: float,
             dt: float = 0.01,
@@ -142,42 +131,21 @@ class Simulator:
             record: Optional[List[str]] = None,
             spike_threshold: float = 0.0) -> 'SimulationResult':
         """
-        Run simulation.
+        Run simulation (must be implemented by subclasses).
         
         Args:
             T: Total simulation time (ms)
-            dt: Time step (ms) - default 0.01 ms is typical for HH
+            dt: Time step (ms)
             state0: Initial state (creates resting state if None)
             stimulus: External current array
             batch_size: Number of neurons (ignored if state0 provided)
-            record: Variables to record ['V', 'm', 'h', 'n'] (default: all)
+            record: Variables to record ['V', 'm', 'h', 'n']
             spike_threshold: Threshold for spike detection (mV)
         
         Returns:
             SimulationResult object with recorded data
         """
-        # Validate dt
-        if dt > 0.1:
-            warnings.warn(f"Large dt ({dt} ms) may cause numerical instability. "
-                        f"Recommended: dt <= 0.05 ms for HH model.")
-        
-        # Setup initial state
-        if state0 is None:
-            state0 = self.model.resting_state(batch_size)
-        
-        # Default recording
-        if record is None:
-            record = ['V', 'm', 'h', 'n']
-        
-        # Run simulation based on backend
-        if self.backend == 'cpu':
-            results = self.sim.run(
-                T=T, dt=dt, state0=state0, stimulus=stimulus,
-                batch_size=batch_size, record_vars=record,
-                spike_threshold=spike_threshold
-            )
-        
-        return SimulationResult(results, self.model.params, dt)
+        pass
 
 
 class SimulationResult:
@@ -200,10 +168,21 @@ class SimulationResult:
         self.params = params
         self.dt = dt
     
+    def __getitem__(self, key: str):
+        """Support dict-style access for backward compatibility."""
+        if key == 'batch_size':
+            return self.data.get('batch_size', 1)
+        return self.data[key]
+    
     @property
     def time(self) -> np.ndarray:
         """Time array."""
         return self.data['time']
+    
+    @property
+    def batch_size(self) -> int:
+        """Number of neurons in the batch."""
+        return self.data.get('batch_size', 1)
     
     @property
     def V(self) -> np.ndarray:

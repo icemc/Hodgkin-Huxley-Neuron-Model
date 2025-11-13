@@ -3,8 +3,13 @@ Numerical integration methods for the Hodgkin-Huxley equations.
 """
 
 import numpy as np
-from typing import Callable, Optional, Union, Tuple
 from .models import HHState, HHParameters, derivatives, rush_larsen_gating_step
+
+try:
+    from scipy.integrate import RK45
+    SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
 
 
 class IntegratorBase:
@@ -126,3 +131,47 @@ class RK4RushLarsen(IntegratorBase):
         final_state.n = rl_state.n
         
         return final_state
+
+
+class RK45Scipy(IntegratorBase):
+    """
+    Scipy's RK45 (Dormand-Prince) integrator.
+    
+    Uses scipy.integrate.RK45 adaptive step-size integrator.
+    Note: This wrapper forces fixed time steps to match other integrators.
+    """
+    
+    def __init__(self, params: HHParameters):
+        super().__init__(params)
+        if not SCIPY_AVAILABLE:
+            raise ImportError(
+                "scipy is not installed. Install it with: pip install scipy"
+            )
+    
+    def step(self, state: HHState, dt: float, I_ext: np.ndarray) -> HHState:
+        """
+        Single RK45 step using scipy.
+        
+        We use scipy's RK45 integrator but force it to take exactly one step
+        of size dt to match the behavior of other integrators.
+        """
+        # Define the derivative function for scipy
+        def func(t, y):
+            """Wrapper to match scipy's expected signature."""
+            temp_state = HHState(y.reshape(state.data.shape))
+            dy = derivatives(temp_state, I_ext, self.params)
+            return dy.flatten()
+        
+        # Flatten state for scipy
+        y0 = state.data.flatten()
+        
+        # Create RK45 integrator
+        # We set max_step=dt to force exactly the step size we want
+        solver = RK45(func, 0.0, y0, dt, max_step=dt, first_step=dt)
+        
+        # Take one step
+        solver.step()
+        
+        # Reshape back to original shape
+        new_data = solver.y.reshape(state.data.shape)
+        return HHState(new_data)

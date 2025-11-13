@@ -3,7 +3,7 @@ Utility functions for stimulus generation, spike detection, and analysis.
 """
 
 import numpy as np
-from typing import Optional, Tuple, List
+from typing import Optional
 
 
 class Stimulus:
