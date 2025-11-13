@@ -3,7 +3,6 @@ Numerical integration methods for the Hodgkin-Huxley equations.
 """
 
 import numpy as np
-from typing import Callable, Optional, Union, Tuple
 from .models import HHState, HHParameters, derivatives, rush_larsen_gating_step
 
 try:

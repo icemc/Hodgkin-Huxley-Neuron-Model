@@ -3,8 +3,8 @@ Hodgkin-Huxley model equations, gating kinetics, and parameter definitions.
 """
 
 import numpy as np
-from typing import Dict, Any
-from dataclasses import dataclass, field
+from typing import Dict
+from dataclasses import dataclass
 
 
 @dataclass
