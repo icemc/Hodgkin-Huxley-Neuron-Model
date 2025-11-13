@@ -36,7 +36,7 @@ project/
 │   ├── conftest.py            # Pytest fixtures and configuration
 │   └── test_suite.py          # Comprehensive test suite (34 tests)
 ├── plots/                     # Generated plots from demos and tests
-├── demo_basic.py              # Example usage script with cpu simulator
+├── demo_cpu.py              # Example usage script with cpu simulator
 ├── demo_gpu.py                # Example usage script with gpu simulator
 ├── pytest.ini                 # Pytest configuration
 ├── requirements.txt           # Python dependencies
@@ -443,7 +443,7 @@ Run the included demos:
 ### CPU example
 
 ```bash
-python demo_basic.py
+python demo_cpu.py
 ```
 
 This will generate two plots:
